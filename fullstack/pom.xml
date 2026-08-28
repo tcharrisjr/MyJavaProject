@@ -40,11 +40,11 @@
 
     <properties>
 
+        <!-- Java version used by Spring Boot and Maven -->
         <java.version>21</java.version>
 
-        <jjwt.version>
-            0.13.0
-        </jjwt.version>
+        <!-- JSON Web Token library version -->
+        <jjwt.version>0.13.0</jjwt.version>
 
     </properties>
 
@@ -56,134 +56,139 @@
 
         <!-- =================================================
              WEB
+             REST controllers, embedded Tomcat, JSON support
              ================================================= -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>
-                spring-boot-starter-web
-            </artifactId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
 
         <!-- =================================================
              JPA
+             Spring Data JPA + Hibernate
              ================================================= -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>
-                spring-boot-starter-data-jpa
-            </artifactId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
 
         <!-- =================================================
              VALIDATION
+             Jakarta Bean Validation
              ================================================= -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>
-                spring-boot-starter-validation
-            </artifactId>
+            <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
 
         <!-- =================================================
              SPRING SECURITY
+             Authentication and authorization
              ================================================= -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>
-                spring-boot-starter-security
-            </artifactId>
+            <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
 
         <!-- =================================================
              JWT
+             JSON Web Token support
              ================================================= -->
 
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
-            <artifactId>
-                jjwt-api
-            </artifactId>
-            <version>
-                ${jjwt.version}
-            </version>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
         </dependency>
 
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
-            <artifactId>
-                jjwt-impl
-            </artifactId>
-            <version>
-                ${jjwt.version}
-            </version>
-            <scope>
-                runtime
-            </scope>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
-            <artifactId>
-                jjwt-jackson
-            </artifactId>
-            <version>
-                ${jjwt.version}
-            </version>
-            <scope>
-                runtime
-            </scope>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
 
         <!-- =================================================
              SQL SERVER
+             Microsoft SQL Server JDBC driver
              ================================================= -->
 
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
-            <artifactId>
-                mssql-jdbc
-            </artifactId>
-            <scope>
-                runtime
-            </scope>
+            <artifactId>mssql-jdbc</artifactId>
+            <scope>runtime</scope>
         </dependency>
-        <dependency>
-    <groupId>com.h2database</groupId>
-         <artifactId>h2</artifactId>
-         <scope>test</scope>
-    </dependency>
+
 
         <!-- =================================================
-             DEVTOOLS
+             FLYWAY DATABASE MIGRATIONS
+
+             Flyway manages version-controlled database
+             schema changes.
+
+             flyway-core:
+             Core Flyway migration engine.
+
+             flyway-database-sqlserver:
+             Adds Microsoft SQL Server support.
              ================================================= -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>
-                spring-boot-devtools
-            </artifactId>
-            <scope>
-                runtime
-            </scope>
-            <optional>
-                true
-            </optional>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
+        
+        <dependency>
+           <groupId>org.flywaydb</groupId>
+           <artifactId>flyway-sqlserver</artifactId>
+       </dependency>
+
+        <!-- =================================================
+             H2 TEST DATABASE
+
+             Used only while running automated tests so tests
+             do not depend on the local SQL Server instance.
+             ================================================= -->
+
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+
+        <!-- =================================================
+             DEVTOOLS
+             Development-time automatic restart support
+             ================================================= -->
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
         </dependency>
 
 
         <!-- =================================================
              TESTING
-             =================================================
-             
+
              spring-boot-starter-test supplies the core
              Spring Boot testing stack including JUnit 5,
              Mockito, AssertJ, Spring Test, and related
@@ -192,44 +197,41 @@
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>
-                spring-boot-starter-test
-            </artifactId>
-            <scope>
-                test
-            </scope>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
-        
+
+
+        <!-- =================================================
+             SPRING MVC TESTING
+
+             Provides MVC-specific test support.
+             ================================================= -->
+
         <dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-webmvc-test</artifactId>
-    <scope>test</scope>
-</dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
 
 
         <!-- =================================================
              JUNIT 5
-             
-             Explicitly included for the Step 10A service
-             unit tests.
+
+             Explicitly included for service unit tests.
              ================================================= -->
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
-            <artifactId>
-                junit-jupiter
-            </artifactId>
-            <scope>
-                test
-            </scope>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
         </dependency>
 
 
         <!-- =================================================
              MOCKITO CORE
-             
+
              Used for:
-             
              @Mock
              when(...)
              verify(...)
@@ -238,65 +240,48 @@
 
         <dependency>
             <groupId>org.mockito</groupId>
-            <artifactId>
-                mockito-core
-            </artifactId>
-            <scope>
-                test
-            </scope>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
         </dependency>
 
 
         <!-- =================================================
              MOCKITO + JUNIT 5 INTEGRATION
-             
+
              Provides:
-             
              @ExtendWith(MockitoExtension.class)
              ================================================= -->
 
         <dependency>
             <groupId>org.mockito</groupId>
-            <artifactId>
-                mockito-junit-jupiter
-            </artifactId>
-            <scope>
-                test
-            </scope>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
         </dependency>
 
 
         <!-- =================================================
              ASSERTJ
-             
-             Useful for fluent assertions in later tests.
+
+             Fluent assertions for automated tests.
              ================================================= -->
 
         <dependency>
             <groupId>org.assertj</groupId>
-            <artifactId>
-                assertj-core
-            </artifactId>
-            <scope>
-                test
-            </scope>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
         </dependency>
 
 
         <!-- =================================================
              SPRING SECURITY TESTING
-             
-             Needed for Step 10B controller/security tests.
+
+             Used by controller/security integration tests.
              ================================================= -->
 
         <dependency>
             <groupId>org.springframework.security</groupId>
-            <artifactId>
-                spring-security-test
-            </artifactId>
-            <scope>
-                test
-            </scope>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
         </dependency>
 
     </dependencies>
@@ -312,35 +297,27 @@
 
             <!-- =================================================
                  SPRING BOOT MAVEN PLUGIN
+
+                 Creates the executable Spring Boot JAR.
                  ================================================= -->
 
             <plugin>
-                <groupId>
-                    org.springframework.boot
-                </groupId>
-
-                <artifactId>
-                    spring-boot-maven-plugin
-                </artifactId>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
 
 
             <!-- =================================================
                  MAVEN SUREFIRE
-                 
-                 Runs JUnit 5 tests during:
-                 
-                 mvnw test
+
+                 Runs JUnit tests during:
+
+                 .\mvnw test
                  ================================================= -->
 
             <plugin>
-                <groupId>
-                    org.apache.maven.plugins
-                </groupId>
-
-                <artifactId>
-                    maven-surefire-plugin
-                </artifactId>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
             </plugin>
 
         </plugins>
