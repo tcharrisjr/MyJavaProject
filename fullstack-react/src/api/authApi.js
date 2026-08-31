@@ -71,3 +71,23 @@ export async function getCurrentUser() {
     "/api/auth/me"
   );
 }
+
+/*
+ * =========================================================
+ * SEQUENCE 13A - TASK ASSIGNEES
+ * =========================================================
+ *
+ * Returns the enabled users that may be selected
+ * as task assignees.
+ *
+ * Backend endpoint:
+ *
+ * GET /api/auth/assignees
+ * =========================================================
+ */
+
+export async function getAssignees() {
+  return apiRequest(
+    "/api/auth/assignees"
+  );
+}

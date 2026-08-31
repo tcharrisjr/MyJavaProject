@@ -3,9 +3,6 @@ package fullstack.model;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -23,56 +20,46 @@ import jakarta.persistence.Table;
 public class Task {
 
     @Id
-    @GeneratedValue(
-        strategy = GenerationType.IDENTITY
-    )
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(
-        nullable = false,
-        length = 200
+            nullable = false,
+            length = 200
     )
     private String title;
 
     @Column(
-        length = 2000
+            length = 2000
     )
     private String description;
 
     @Column(
-        nullable = false,
-        length = 30
+            nullable = false,
+            length = 30
     )
-    private String status = "OPEN";
+    private String status;
 
     @Column(
-        nullable = false,
-        length = 30
+            nullable = false,
+            length = 30
     )
-    private String priority = "MEDIUM";
+    private String priority;
 
     @Column(
-        name = "due_date"
+            name = "due_date"
     )
     private LocalDate dueDate;
 
-    // =========================================================
-    // CREATED DATE
-    // =========================================================
-
     @Column(
-        name = "created_date",
-        nullable = false
+            name = "created_date",
+            nullable = false
     )
     private LocalDateTime createdDate;
 
-    // =========================================================
-    // UPDATED DATE
-    // =========================================================
-
     @Column(
-        name = "updated_date",
-        nullable = false
+            name = "updated_date",
+            nullable = false
     )
     private LocalDateTime updatedDate;
 
@@ -81,58 +68,60 @@ public class Task {
     // =========================================================
 
     @ManyToOne(
-        fetch = FetchType.LAZY,
-        optional = false
+            fetch = FetchType.LAZY,
+            optional = false
     )
     @JoinColumn(
-        name = "project_id",
-        nullable = false
+            name = "project_id",
+            nullable = false
     )
-    @JsonIgnore
     private Project project;
+
+    // =========================================================
+    // SEQUENCE 13A - TASK ASSIGNEE
+    //
+    // A task may be assigned to one application user.
+    //
+    // nullable = true means the task may remain unassigned.
+    // =========================================================
+
+    @ManyToOne(
+            fetch = FetchType.LAZY
+    )
+    @JoinColumn(
+            name = "assignee_id"
+    )
+    private AppUser assignee;
+
+    // =========================================================
+    // CONSTRUCTOR
+    // =========================================================
 
     public Task() {
     }
 
     // =========================================================
-    // PRE-PERSIST
+    // CREATED / UPDATED TIMESTAMPS
     // =========================================================
 
     @PrePersist
-    public void prePersist() {
+    protected void onCreate() {
 
         LocalDateTime now =
                 LocalDateTime.now();
 
         if (createdDate == null) {
-            createdDate = now;
+
+            createdDate =
+                    now;
         }
 
-        if (updatedDate == null) {
-            updatedDate = now;
-        }
-
-        if (
-            status == null
-            || status.isBlank()
-        ) {
-            status = "OPEN";
-        }
-
-        if (
-            priority == null
-            || priority.isBlank()
-        ) {
-            priority = "MEDIUM";
-        }
+        updatedDate =
+                now;
     }
 
-    // =========================================================
-    // PRE-UPDATE
-    // =========================================================
-
     @PreUpdate
-    public void preUpdate() {
+    protected void onUpdate() {
 
         updatedDate =
                 LocalDateTime.now();
@@ -143,102 +132,126 @@ public class Task {
     // =========================================================
 
     public Long getId() {
+
         return id;
     }
 
     public void setId(
             Long id) {
 
-        this.id = id;
+        this.id =
+                id;
     }
 
     public String getTitle() {
+
         return title;
     }
 
     public void setTitle(
             String title) {
 
-        this.title = title;
+        this.title =
+                title;
     }
 
     public String getDescription() {
+
         return description;
     }
 
     public void setDescription(
             String description) {
 
-        this.description = description;
+        this.description =
+                description;
     }
 
     public String getStatus() {
+
         return status;
     }
 
     public void setStatus(
             String status) {
 
-        this.status = status;
+        this.status =
+                status;
     }
 
     public String getPriority() {
+
         return priority;
     }
 
     public void setPriority(
             String priority) {
 
-        this.priority = priority;
+        this.priority =
+                priority;
     }
 
     public LocalDate getDueDate() {
+
         return dueDate;
     }
 
     public void setDueDate(
             LocalDate dueDate) {
 
-        this.dueDate = dueDate;
+        this.dueDate =
+                dueDate;
     }
 
     public LocalDateTime getCreatedDate() {
+
         return createdDate;
     }
 
     public void setCreatedDate(
             LocalDateTime createdDate) {
 
-        this.createdDate = createdDate;
+        this.createdDate =
+                createdDate;
     }
 
     public LocalDateTime getUpdatedDate() {
+
         return updatedDate;
     }
 
     public void setUpdatedDate(
             LocalDateTime updatedDate) {
 
-        this.updatedDate = updatedDate;
+        this.updatedDate =
+                updatedDate;
     }
 
     public Project getProject() {
+
         return project;
     }
 
     public void setProject(
             Project project) {
 
-        this.project = project;
+        this.project =
+                project;
     }
 
-    @JsonProperty("projectId")
-    public Long getProjectId() {
+    // =========================================================
+    // ASSIGNEE GETTER / SETTER
+    // =========================================================
 
-        if (project == null) {
-            return null;
-        }
+    public AppUser getAssignee() {
 
-        return project.getId();
+        return assignee;
+    }
+
+    public void setAssignee(
+            AppUser assignee) {
+
+        this.assignee =
+                assignee;
     }
 }

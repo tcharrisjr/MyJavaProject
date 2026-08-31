@@ -3,7 +3,6 @@ package fullstack.dto.task;
 import java.time.LocalDate;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public class TaskRequest {
@@ -13,11 +12,11 @@ public class TaskRequest {
     // =========================================================
 
     @NotBlank(
-        message = "Task title is required."
+            message = "Task title is required."
     )
     @Size(
-        max = 200,
-        message = "Task title cannot exceed 200 characters."
+            max = 200,
+            message = "Task title cannot exceed 200 characters."
     )
     private String title;
 
@@ -26,8 +25,8 @@ public class TaskRequest {
     // =========================================================
 
     @Size(
-        max = 2000,
-        message = "Task description cannot exceed 2000 characters."
+            max = 2000,
+            message = "Task description cannot exceed 2000 characters."
     )
     private String description;
 
@@ -35,31 +34,27 @@ public class TaskRequest {
     // STATUS
     // =========================================================
 
-    @Pattern(
-        regexp =
-            "OPEN|IN_PROGRESS|COMPLETED",
-        message =
-            "Status must be OPEN, IN_PROGRESS, or COMPLETED."
-    )
-    private String status = "OPEN";
+    private String status;
 
     // =========================================================
     // PRIORITY
     // =========================================================
 
-    @Pattern(
-        regexp =
-            "LOW|MEDIUM|HIGH",
-        message =
-            "Priority must be LOW, MEDIUM, or HIGH."
-    )
-    private String priority = "MEDIUM";
+    private String priority;
 
     // =========================================================
     // DUE DATE
     // =========================================================
 
     private LocalDate dueDate;
+
+    // =========================================================
+    // SEQUENCE 13A - ASSIGNEE
+    //
+    // null = task is unassigned
+    // =========================================================
+
+    private Long assigneeId;
 
     // =========================================================
     // CONSTRUCTOR
@@ -73,6 +68,7 @@ public class TaskRequest {
     // =========================================================
 
     public String getTitle() {
+
         return title;
     }
 
@@ -83,6 +79,7 @@ public class TaskRequest {
     }
 
     public String getDescription() {
+
         return description;
     }
 
@@ -93,6 +90,7 @@ public class TaskRequest {
     }
 
     public String getStatus() {
+
         return status;
     }
 
@@ -103,6 +101,7 @@ public class TaskRequest {
     }
 
     public String getPriority() {
+
         return priority;
     }
 
@@ -113,6 +112,7 @@ public class TaskRequest {
     }
 
     public LocalDate getDueDate() {
+
         return dueDate;
     }
 
@@ -120,5 +120,16 @@ public class TaskRequest {
             LocalDate dueDate) {
 
         this.dueDate = dueDate;
+    }
+
+    public Long getAssigneeId() {
+
+        return assigneeId;
+    }
+
+    public void setAssigneeId(
+            Long assigneeId) {
+
+        this.assigneeId = assigneeId;
     }
 }

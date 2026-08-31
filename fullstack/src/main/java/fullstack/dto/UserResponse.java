@@ -1,8 +1,8 @@
 package fullstack.dto;
 
-import fullstack.model.AppUser;
-
 import java.time.LocalDateTime;
+
+import fullstack.model.AppUser;
 
 public class UserResponse {
 
@@ -30,18 +30,26 @@ public class UserResponse {
         this.name = name;
         this.email = email;
         this.role = role;
-        this.createdDate = createdDate;
+        this.createdDate =
+                createdDate;
     }
 
     public static UserResponse from(
             AppUser user) {
 
+        if (user == null) {
+
+            return null;
+        }
+
         return new UserResponse(
-            user.getId(),
-            user.getName(),
-            user.getEmail(),
-            user.getRole().name(),
-            user.getCreatedDate()
+                user.getId(),
+                user.getName(),
+                user.getEmail(),
+                user.getRole() != null
+                        ? user.getRole().name()
+                        : null,
+                user.getCreatedDate()
         );
     }
 
@@ -89,8 +97,7 @@ public class UserResponse {
         this.role = role;
     }
 
-    public LocalDateTime
-        getCreatedDate() {
+    public LocalDateTime getCreatedDate() {
 
         return createdDate;
     }
@@ -99,6 +106,6 @@ public class UserResponse {
             LocalDateTime createdDate) {
 
         this.createdDate =
-            createdDate;
+                createdDate;
     }
 }

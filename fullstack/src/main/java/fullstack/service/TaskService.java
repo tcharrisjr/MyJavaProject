@@ -13,10 +13,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 import fullstack.dto.task.TaskRequest;
 import fullstack.dto.task.TaskResponse;
+import fullstack.model.AppUser;
 import fullstack.model.Project;
 import fullstack.model.Task;
 import fullstack.repository.ProjectRepository;
 import fullstack.repository.TaskRepository;
+import fullstack.repository.UserRepository;
 
 @Service
 @Transactional
@@ -26,36 +28,35 @@ public class TaskService {
 
     private final ProjectRepository projectRepository;
 
+    private final UserRepository userRepository;
+
     // =========================================================
     // CONSTRUCTOR
     // =========================================================
 
     public TaskService(
-
             TaskRepository taskRepository,
-
-            ProjectRepository projectRepository) {
+            ProjectRepository projectRepository,
+            UserRepository userRepository) {
 
         this.taskRepository =
                 taskRepository;
 
         this.projectRepository =
                 projectRepository;
+
+        this.userRepository =
+                userRepository;
     }
 
     // =========================================================
     // GET ALL TASKS FOR PROJECT
-    //
-    // Still temporarily used by project-health calculations.
     // =========================================================
 
     @Transactional(readOnly = true)
-    public List<TaskResponse>
-            getTasksByProject(
-
-                    Long projectId,
-
-                    String email) {
+    public List<TaskResponse> getTasksByProject(
+            Long projectId,
+            String email) {
 
         verifyProjectOwnership(
                 projectId,
@@ -79,22 +80,14 @@ public class TaskService {
     // =========================================================
 
     @Transactional(readOnly = true)
-    public Page<TaskResponse>
-            getTasksByProjectPaged(
-
-                    Long projectId,
-
-                    String email,
-
-                    String status,
-
-                    String priority,
-
-                    String search,
-
-                    String dueDateFilter,
-
-                    Pageable pageable) {
+    public Page<TaskResponse> getTasksByProjectPaged(
+            Long projectId,
+            String email,
+            String status,
+            String priority,
+            String search,
+            String dueDateFilter,
+            Pageable pageable) {
 
         verifyProjectOwnership(
                 projectId,
@@ -130,23 +123,14 @@ public class TaskService {
         Page<Task> taskPage =
                 taskRepository
                         .searchTasksForOwnedProject(
-
                                 projectId,
-
                                 email,
-
                                 normalizedStatus,
-
                                 normalizedPriority,
-
                                 normalizedSearch,
-
                                 normalizedDueDateFilter,
-
                                 today,
-
                                 dueSoonEnd,
-
                                 pageable
                         );
 
@@ -160,27 +144,20 @@ public class TaskService {
     // =========================================================
 
     public TaskResponse createTask(
-
             Long projectId,
-
             TaskRequest request,
-
             String email) {
 
         Project project =
                 projectRepository
                         .findByIdAndOwner_EmailIgnoreCase(
-
                                 projectId,
-
                                 email
                         )
                         .orElseThrow(
                                 () ->
                                         new ResponseStatusException(
-
                                                 HttpStatus.NOT_FOUND,
-
                                                 "Project not found."
                                         )
                         );
@@ -217,10 +194,21 @@ public class TaskService {
         );
 
         /*
-         * Server controls ownership/project association.
+         * Project relationship is controlled by the server.
          */
         task.setProject(
                 project
+        );
+
+        /*
+         * Sequence 13A - Assignee
+         *
+         * null means the task remains unassigned.
+         */
+        task.setAssignee(
+                resolveAssignee(
+                        request.getAssigneeId()
+                )
         );
 
         Task savedTask =
@@ -238,22 +226,15 @@ public class TaskService {
     // =========================================================
 
     public TaskResponse updateTask(
-
             Long projectId,
-
             Long taskId,
-
             TaskRequest request,
-
             String email) {
 
         Task existingTask =
                 getOwnedTask(
-
                         projectId,
-
                         taskId,
-
                         email
                 );
 
@@ -285,6 +266,17 @@ public class TaskService {
                 request.getDueDate()
         );
 
+        /*
+         * Sequence 13A
+         *
+         * null assigneeId deliberately unassigns the task.
+         */
+        existingTask.setAssignee(
+                resolveAssignee(
+                        request.getAssigneeId()
+                )
+        );
+
         Task savedTask =
                 taskRepository.save(
                         existingTask
@@ -300,20 +292,14 @@ public class TaskService {
     // =========================================================
 
     public void deleteTask(
-
             Long projectId,
-
             Long taskId,
-
             String email) {
 
         Task task =
                 getOwnedTask(
-
                         projectId,
-
                         taskId,
-
                         email
                 );
 
@@ -323,32 +309,112 @@ public class TaskService {
     }
 
     // =========================================================
+    // ASSIGNEE LOOKUP
+    // =========================================================
+
+    private AppUser resolveAssignee(
+            Long assigneeId) {
+
+        if (assigneeId == null) {
+
+            return null;
+        }
+
+        return userRepository
+                .findById(
+                        assigneeId
+                )
+                .orElseThrow(
+                        () ->
+                                new ResponseStatusException(
+                                        HttpStatus.BAD_REQUEST,
+                                        "Assignee not found."
+                                )
+                );
+    }
+
+    // =========================================================
     // ENTITY -> RESPONSE DTO
     // =========================================================
 
     private TaskResponse toResponse(
             Task task) {
 
-        return new TaskResponse(
+        TaskResponse response =
+                new TaskResponse();
 
-                task.getId(),
+        response.setId(
+                task.getId()
+        );
 
-                task.getProjectId(),
+        /*
+         * Task stores a Project relationship.
+         *
+         * Project ID is obtained through:
+         *
+         * Task -> Project -> ID
+         */
+        if (task.getProject() != null) {
 
-                task.getTitle(),
+            response.setProjectId(
+                    task.getProject()
+                            .getId()
+            );
+        }
 
-                task.getDescription(),
+        response.setTitle(
+                task.getTitle()
+        );
 
-                task.getStatus(),
+        response.setDescription(
+                task.getDescription()
+        );
 
-                task.getPriority(),
+        response.setStatus(
+                task.getStatus()
+        );
 
-                task.getDueDate(),
+        response.setPriority(
+                task.getPriority()
+        );
 
-                task.getCreatedDate(),
+        response.setDueDate(
+                task.getDueDate()
+        );
 
+        response.setCreatedDate(
+                task.getCreatedDate()
+        );
+
+        response.setUpdatedDate(
                 task.getUpdatedDate()
         );
+
+        /*
+         * Sequence 13A - Assignee
+         *
+         * These values stay null when the task
+         * has not been assigned.
+         */
+        if (task.getAssignee() != null) {
+
+            response.setAssigneeId(
+                    task.getAssignee()
+                            .getId()
+            );
+
+            response.setAssigneeName(
+                    task.getAssignee()
+                            .getName()
+            );
+
+            response.setAssigneeEmail(
+                    task.getAssignee()
+                            .getEmail()
+            );
+        }
+
+        return response;
     }
 
     // =========================================================
@@ -356,28 +422,20 @@ public class TaskService {
     // =========================================================
 
     private Task getOwnedTask(
-
             Long projectId,
-
             Long taskId,
-
             String email) {
 
         return taskRepository
                 .findByIdAndProject_IdAndProject_Owner_EmailIgnoreCase(
-
                         taskId,
-
                         projectId,
-
                         email
                 )
                 .orElseThrow(
                         () ->
                                 new ResponseStatusException(
-
                                         HttpStatus.NOT_FOUND,
-
                                         "Task not found."
                                 )
                 );
@@ -388,17 +446,13 @@ public class TaskService {
     // =========================================================
 
     private void verifyProjectOwnership(
-
             Long projectId,
-
             String email) {
 
         boolean exists =
                 projectRepository
                         .findByIdAndOwner_EmailIgnoreCase(
-
                                 projectId,
-
                                 email
                         )
                         .isPresent();
@@ -411,11 +465,8 @@ public class TaskService {
              * Do not expose whether another user's
              * project exists.
              */
-
             throw new ResponseStatusException(
-
                     HttpStatus.NOT_FOUND,
-
                     "Project not found."
             );
         }
@@ -428,15 +479,8 @@ public class TaskService {
     private String normalizeTitle(
             String title) {
 
-        if (
-            title == null
-            || title.isBlank()
-        ) {
-
-            /*
-             * Normally intercepted by @NotBlank,
-             * but this protects service-layer usage too.
-             */
+        if (title == null
+                || title.isBlank()) {
 
             throw new IllegalArgumentException(
                     "Task title is required."
@@ -453,9 +497,7 @@ public class TaskService {
     private String normalizeDescription(
             String description) {
 
-        if (
-            description == null
-        ) {
+        if (description == null) {
 
             return "";
         }
@@ -470,10 +512,8 @@ public class TaskService {
     private String normalizeStatus(
             String status) {
 
-        if (
-            status == null
-            || status.isBlank()
-        ) {
+        if (status == null
+                || status.isBlank()) {
 
             return "OPEN";
         }
@@ -493,9 +533,7 @@ public class TaskService {
                                 "_"
                         );
 
-        return switch (
-            normalized
-        ) {
+        return switch (normalized) {
 
             case "OPEN" ->
                     "OPEN";
@@ -524,13 +562,11 @@ public class TaskService {
     private String normalizeOptionalStatus(
             String status) {
 
-        if (
-            status == null
-            || status.isBlank()
-            || "ALL".equalsIgnoreCase(
-                    status.trim()
-            )
-        ) {
+        if (status == null
+                || status.isBlank()
+                || "ALL".equalsIgnoreCase(
+                        status.trim()
+                )) {
 
             return null;
         }
@@ -547,10 +583,8 @@ public class TaskService {
     private String normalizePriority(
             String priority) {
 
-        if (
-            priority == null
-            || priority.isBlank()
-        ) {
+        if (priority == null
+                || priority.isBlank()) {
 
             return "MEDIUM";
         }
@@ -562,9 +596,7 @@ public class TaskService {
                                 Locale.ROOT
                         );
 
-        return switch (
-            normalized
-        ) {
+        return switch (normalized) {
 
             case "LOW" ->
                     "LOW";
@@ -590,13 +622,11 @@ public class TaskService {
     private String normalizeOptionalPriority(
             String priority) {
 
-        if (
-            priority == null
-            || priority.isBlank()
-            || "ALL".equalsIgnoreCase(
-                    priority.trim()
-            )
-        ) {
+        if (priority == null
+                || priority.isBlank()
+                || "ALL".equalsIgnoreCase(
+                        priority.trim()
+                )) {
 
             return null;
         }
@@ -613,10 +643,8 @@ public class TaskService {
     private String normalizeSearch(
             String search) {
 
-        if (
-            search == null
-            || search.isBlank()
-        ) {
+        if (search == null
+                || search.isBlank()) {
 
             return null;
         }
@@ -631,13 +659,11 @@ public class TaskService {
     private String normalizeDueDateFilter(
             String dueDateFilter) {
 
-        if (
-            dueDateFilter == null
-            || dueDateFilter.isBlank()
-            || "ALL".equalsIgnoreCase(
-                    dueDateFilter.trim()
-            )
-        ) {
+        if (dueDateFilter == null
+                || dueDateFilter.isBlank()
+                || "ALL".equalsIgnoreCase(
+                        dueDateFilter.trim()
+                )) {
 
             return null;
         }
@@ -657,9 +683,7 @@ public class TaskService {
                                 "_"
                         );
 
-        return switch (
-            normalized
-        ) {
+        return switch (normalized) {
 
             case "OVERDUE" ->
                     "OVERDUE";

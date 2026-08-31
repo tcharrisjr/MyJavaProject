@@ -16,6 +16,10 @@ import {
   deleteTask,
 } from "../api/apiClient";
 
+import {
+  getAssignees,
+} from "../api/authApi";
+
 import "../Dashboard.css";
 
 
@@ -82,7 +86,23 @@ function Dashboard() {
     status: "OPEN",
     priority: "MEDIUM",
     dueDate: "",
+    assigneeId: "",
   });
+
+
+  // =========================================================
+  // SEQUENCE 13A - ASSIGNEES
+  // =========================================================
+
+  const [
+    assignees,
+    setAssignees,
+  ] = useState([]);
+
+  const [
+    assigneesLoading,
+    setAssigneesLoading,
+  ] = useState(false);
 
 
   // =========================================================
@@ -213,6 +233,78 @@ function Dashboard() {
     updatingTaskId,
     setUpdatingTaskId,
   ] = useState(null);
+
+
+  // =========================================================
+  // SEQUENCE 13A - LOAD ASSIGNEES
+  // =========================================================
+
+  const loadAssignees =
+    useCallback(
+      async () => {
+
+        try {
+
+          setAssigneesLoading(
+            true
+          );
+
+
+          const response =
+            await getAssignees();
+
+
+          setAssignees(
+            Array.isArray(
+              response
+            )
+              ? response
+              : []
+          );
+
+        } catch (
+          err
+        ) {
+
+          console.error(
+            "Unable to load assignees:",
+            err
+          );
+
+
+          setAssignees(
+            []
+          );
+
+
+          setError(
+            err?.message ||
+              "Unable to load task assignees."
+          );
+
+        } finally {
+
+          setAssigneesLoading(
+            false
+          );
+
+        }
+
+      },
+      []
+    );
+
+
+  useEffect(
+    () => {
+
+      loadAssignees();
+
+    },
+    [
+      loadAssignees,
+    ]
+  );
 
 
   // =========================================================
@@ -1236,6 +1328,7 @@ function Dashboard() {
         status: "OPEN",
         priority: "MEDIUM",
         dueDate: "",
+        assigneeId: "",
       });
 
 
@@ -1315,6 +1408,18 @@ function Dashboard() {
         );
 
 
+        const taskPayload = {
+          ...taskForm,
+
+          assigneeId:
+            taskForm.assigneeId
+              ? Number(
+                  taskForm.assigneeId
+                )
+              : null,
+        };
+
+
         if (
           editingTask
         ) {
@@ -1322,7 +1427,7 @@ function Dashboard() {
           await updateTask(
             selectedProject.id,
             editingTask.id,
-            taskForm
+            taskPayload
           );
 
 
@@ -1334,7 +1439,7 @@ function Dashboard() {
 
           await createTask(
             selectedProject.id,
-            taskForm
+            taskPayload
           );
 
 
@@ -1409,6 +1514,13 @@ function Dashboard() {
         dueDate:
           task.dueDate ||
           "",
+
+        assigneeId:
+          task.assigneeId != null
+            ? String(
+                task.assigneeId
+              )
+            : "",
       });
 
 
@@ -1546,6 +1658,10 @@ function Dashboard() {
       dueDate:
         task.dueDate ||
         "",
+
+      assigneeId:
+        task.assigneeId ??
+        null,
 
       ...overrides,
     });
@@ -2663,6 +2779,7 @@ function Dashboard() {
                             status: "OPEN",
                             priority: "MEDIUM",
                             dueDate: "",
+                            assigneeId: "",
                           });
 
 
@@ -2993,6 +3110,61 @@ function Dashboard() {
                                 handleTaskInputChange
                               }
                             />
+
+                          </label>
+
+
+                          <label>
+                            Assignee
+
+                            <select
+                              name="assigneeId"
+                              value={
+                                taskForm.assigneeId
+                              }
+                              onChange={
+                                handleTaskInputChange
+                              }
+                              disabled={
+                                assigneesLoading
+                              }
+                            >
+
+                              <option value="">
+                                Unassigned
+                              </option>
+
+
+                              {assignees.map(
+                                (
+                                  user
+                                ) => (
+
+                                  <option
+                                    key={
+                                      user.id
+                                    }
+                                    value={
+                                      user.id
+                                    }
+                                  >
+                                    {user.name ||
+                                      user.email}
+                                  </option>
+
+                                )
+                              )}
+
+                            </select>
+
+
+                            {assigneesLoading && (
+
+                              <span className="muted-text">
+                                Loading users...
+                              </span>
+
+                            )}
 
                           </label>
 
@@ -3577,6 +3749,30 @@ function Dashboard() {
                                         task
                                       )}
                                     </em>
+
+                                  )}
+
+                                </div>
+
+
+                                <div className="task-assignee">
+
+                                  <span>
+                                    Assignee
+                                  </span>
+
+
+                                  <strong>
+                                    {task.assigneeName ||
+                                      "Unassigned"}
+                                  </strong>
+
+
+                                  {task.assigneeEmail && (
+
+                                    <small>
+                                      {task.assigneeEmail}
+                                    </small>
 
                                   )}
 

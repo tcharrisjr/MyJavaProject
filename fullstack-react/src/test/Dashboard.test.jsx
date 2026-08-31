@@ -32,6 +32,10 @@ import {
   deleteTask,
 } from "../api/apiClient";
 
+import {
+  getAssignees,
+} from "../api/authApi";
+
 
 /*
  * =============================================================
@@ -56,6 +60,13 @@ vi.mock(
   })
 );
 
+vi.mock(
+  "../api/authApi",
+  () => ({
+    getAssignees: vi.fn(),
+  })
+);
+
 
 /*
  * =============================================================
@@ -75,6 +86,22 @@ const mockProjects = [
     name: "Mobile Application",
     description:
       "Build the mobile application.",
+  },
+];
+
+
+const mockAssignees = [
+  {
+    id: 201,
+    name: "Alex Developer",
+    email: "alex@example.com",
+    role: "USER",
+  },
+  {
+    id: 202,
+    name: "Jordan Tester",
+    email: "jordan@example.com",
+    role: "USER",
   },
 ];
 
@@ -128,39 +155,6 @@ const mockTaskPage = {
 
 /*
  * =============================================================
- * TEST HELPERS
- * =============================================================
- */
-
-async function selectWebsiteProject(
-  user
-) {
-
-  await user.click(
-    await screen.findByText(
-      "Website Redesign"
-    )
-  );
-
-}
-
-
-async function getHomepageTaskCard() {
-
-  const taskTitle =
-    await screen.findByText(
-      "Create homepage"
-    );
-
-  return taskTitle.closest(
-    "article"
-  );
-
-}
-
-
-/*
- * =============================================================
  * DASHBOARD TESTS
  * =============================================================
  */
@@ -168,12 +162,6 @@ async function getHomepageTaskCard() {
 describe(
   "Dashboard",
   () => {
-
-    /*
-     * =========================================================
-     * COMMON MOCK SETUP
-     * =========================================================
-     */
 
     beforeEach(
       () => {
@@ -183,6 +171,11 @@ describe(
 
         getProjects.mockResolvedValue(
           mockProjects
+        );
+
+
+        getAssignees.mockResolvedValue(
+          mockAssignees
         );
 
 
@@ -353,6 +346,14 @@ describe(
         )
           .toBeInTheDocument();
 
+
+        expect(
+          getProjects
+        )
+          .toHaveBeenCalledTimes(
+            1
+          );
+
       }
     );
 
@@ -455,17 +456,15 @@ describe(
       "selects a project when its card is clicked",
       async () => {
 
-        const user =
-          userEvent.setup();
-
-
         render(
           <Dashboard />
         );
 
 
-        await selectWebsiteProject(
-          user
+        fireEvent.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
 
@@ -504,17 +503,15 @@ describe(
       "loads project health after selecting a project",
       async () => {
 
-        const user =
-          userEvent.setup();
-
-
         render(
           <Dashboard />
         );
 
 
-        await selectWebsiteProject(
-          user
+        fireEvent.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
 
@@ -572,17 +569,27 @@ describe(
       "loads tasks after selecting a project",
       async () => {
 
-        const user =
-          userEvent.setup();
-
-
         render(
           <Dashboard />
         );
 
 
-        await selectWebsiteProject(
-          user
+        fireEvent.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
+        );
+
+
+        await waitFor(
+          () => {
+
+            expect(
+              getProjectTasksPage
+            )
+              .toHaveBeenCalled();
+
+          }
         );
 
 
@@ -625,17 +632,15 @@ describe(
       "requests the first task page using the default filters",
       async () => {
 
-        const user =
-          userEvent.setup();
-
-
         render(
           <Dashboard />
         );
 
 
-        await selectWebsiteProject(
-          user
+        fireEvent.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
 
@@ -650,13 +655,22 @@ describe(
                 {
                   page: 0,
                   size: 10,
-                  status: "ALL",
-                  priority: "ALL",
-                  search: "",
+
+                  status:
+                    "ALL",
+
+                  priority:
+                    "ALL",
+
+                  search:
+                    "",
+
                   dueDateFilter:
                     "ALL",
+
                   sortBy:
                     "dueDate",
+
                   sortDirection:
                     "asc",
                 }
@@ -681,17 +695,29 @@ describe(
       "displays backend project health statistics",
       async () => {
 
-        const user =
-          userEvent.setup();
-
-
         render(
           <Dashboard />
         );
 
 
-        await selectWebsiteProject(
-          user
+        fireEvent.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
+        );
+
+
+        await waitFor(
+          () => {
+
+            expect(
+              getProjectHealth
+            )
+              .toHaveBeenCalledWith(
+                1
+              );
+
+          }
         );
 
 
@@ -769,10 +795,6 @@ describe(
       "shows the empty task state when the selected project has no tasks",
       async () => {
 
-        const user =
-          userEvent.setup();
-
-
         getProjectHealth.mockResolvedValue({
           totalTasks: 0,
           openTasks: 0,
@@ -800,8 +822,10 @@ describe(
         );
 
 
-        await selectWebsiteProject(
-          user
+        fireEvent.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
 
@@ -820,7 +844,7 @@ describe(
      * =========================================================
      * TEST 12
      *
-     * OPEN CREATE PROJECT
+     * OPEN CREATE PROJECT FORM
      * =========================================================
      */
 
@@ -868,6 +892,14 @@ describe(
         expect(
           screen.getByPlaceholderText(
             "Enter project name"
+          )
+        )
+          .toBeInTheDocument();
+
+
+        expect(
+          screen.getByPlaceholderText(
+            "Describe the project"
           )
         )
           .toBeInTheDocument();
@@ -949,6 +981,7 @@ describe(
               .toHaveBeenCalledWith({
                 name:
                   "New Project",
+
                 description:
                   "New project description.",
               });
@@ -963,6 +996,14 @@ describe(
           )
         )
           .toBeInTheDocument();
+
+
+        expect(
+          getProjects.mock.calls.length
+        )
+          .toBeGreaterThanOrEqual(
+            2
+          );
 
       }
     );
@@ -1003,6 +1044,18 @@ describe(
             }
           )
         );
+
+
+        expect(
+          screen.getByRole(
+            "heading",
+            {
+              name:
+                "Create Project",
+            }
+          )
+        )
+          .toBeInTheDocument();
 
 
         await user.click(
@@ -1074,6 +1127,18 @@ describe(
 
 
         expect(
+          screen.getByRole(
+            "heading",
+            {
+              name:
+                "Edit Project",
+            }
+          )
+        )
+          .toBeInTheDocument();
+
+
+        expect(
           screen.getByPlaceholderText(
             "Enter project name"
           )
@@ -1091,6 +1156,12 @@ describe(
           .toHaveValue(
             "Redesign the company website."
           );
+
+
+        expect(
+          window.scrollTo
+        )
+          .toHaveBeenCalled();
 
       }
     );
@@ -1193,6 +1264,7 @@ describe(
                 {
                   name:
                     "Updated Website",
+
                   description:
                     "Updated description.",
                 }
@@ -1200,6 +1272,22 @@ describe(
 
           }
         );
+
+
+        expect(
+          await screen.findByText(
+            "Project updated successfully."
+          )
+        )
+          .toBeInTheDocument();
+
+
+        expect(
+          getProjects.mock.calls.length
+        )
+          .toBeGreaterThanOrEqual(
+            2
+          );
 
       }
     );
@@ -1246,6 +1334,14 @@ describe(
         );
 
 
+        expect(
+          window.confirm
+        )
+          .toHaveBeenCalledWith(
+            'Delete "Website Redesign" and its tasks?'
+          );
+
+
         await waitFor(
           () => {
 
@@ -1267,6 +1363,14 @@ describe(
         )
           .toBeInTheDocument();
 
+
+        expect(
+          getProjects.mock.calls.length
+        )
+          .toBeGreaterThanOrEqual(
+            2
+          );
+
       }
     );
 
@@ -1275,7 +1379,7 @@ describe(
      * =========================================================
      * TEST 18
      *
-     * CANCEL PROJECT DELETE
+     * CANCEL DELETE PROJECT
      * =========================================================
      */
 
@@ -1316,6 +1420,12 @@ describe(
         await user.click(
           deleteButtons[0]
         );
+
+
+        expect(
+          window.confirm
+        )
+          .toHaveBeenCalled();
 
 
         expect(
@@ -1404,9 +1514,7 @@ describe(
 
     /*
      * =========================================================
-     * TEST 20
-     *
-     * OPEN CREATE TASK
+     * TEST 20 - OPEN CREATE TASK FORM
      * =========================================================
      */
 
@@ -1417,16 +1525,15 @@ describe(
         const user =
           userEvent.setup();
 
-
         render(
           <Dashboard />
         );
 
-
-        await selectWebsiteProject(
-          user
+        await user.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
-
 
         await user.click(
           screen.getByRole(
@@ -1437,7 +1544,6 @@ describe(
             }
           )
         );
-
 
         expect(
           screen.getByRole(
@@ -1450,40 +1556,43 @@ describe(
         )
           .toBeInTheDocument();
 
+        expect(
+          screen.getByPlaceholderText(
+            "Enter task title"
+          )
+        )
+          .toBeInTheDocument();
+
       }
     );
 
 
     /*
      * =========================================================
-     * TEST 21
-     *
-     * CREATE TASK
+     * TEST 21 - CREATE TASK
      * =========================================================
      */
 
     it(
-      "creates a task for the selected project",
+      "creates a task for the selected project and refreshes task data",
       async () => {
 
         const user =
           userEvent.setup();
 
-
         render(
           <Dashboard />
         );
 
-
-        await selectWebsiteProject(
-          user
+        await user.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
-
 
         await screen.findByText(
           "Create homepage"
         );
-
 
         await user.click(
           screen.getByRole(
@@ -1495,14 +1604,12 @@ describe(
           )
         );
 
-
         await user.type(
           screen.getByPlaceholderText(
             "Enter task title"
           ),
           "New Dashboard Task"
         );
-
 
         await user.type(
           screen.getByPlaceholderText(
@@ -1511,8 +1618,7 @@ describe(
           "Created by the Dashboard test."
         );
 
-
-        const taskPanel =
+        const taskForm =
           screen.getByRole(
             "heading",
             {
@@ -1524,12 +1630,10 @@ describe(
               ".task-form-panel"
             );
 
-
         const form =
           within(
-            taskPanel
+            taskForm
           );
-
 
         await user.selectOptions(
           form.getByLabelText(
@@ -1538,14 +1642,12 @@ describe(
           "IN_PROGRESS"
         );
 
-
         await user.selectOptions(
           form.getByLabelText(
             "Priority"
           ),
           "HIGH"
         );
-
 
         fireEvent.change(
           form.getByLabelText(
@@ -1559,7 +1661,6 @@ describe(
           }
         );
 
-
         await user.click(
           form.getByRole(
             "button",
@@ -1569,7 +1670,6 @@ describe(
             }
           )
         );
-
 
         await waitFor(
           () => {
@@ -1590,11 +1690,20 @@ describe(
                     "HIGH",
                   dueDate:
                     "2026-10-01",
+                  assigneeId:
+                    null,
                 }
               );
 
           }
         );
+
+        expect(
+          await screen.findByText(
+            "Task created successfully."
+          )
+        )
+          .toBeInTheDocument();
 
       }
     );
@@ -1602,33 +1711,36 @@ describe(
 
     /*
      * =========================================================
-     * TEST 22
-     *
-     * EDIT TASK FORM
+     * TEST 22 - EDIT TASK FORM
      * =========================================================
      */
 
     it(
-      "opens the edit task form with existing values",
+      "opens the edit task form with the existing task values",
       async () => {
 
         const user =
           userEvent.setup();
 
-
         render(
           <Dashboard />
         );
 
-
-        await selectWebsiteProject(
-          user
+        await user.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
+        const taskTitle =
+          await screen.findByText(
+            "Create homepage"
+          );
 
         const taskCard =
-          await getHomepageTaskCard();
-
+          taskTitle.closest(
+            "article"
+          );
 
         await user.click(
           within(
@@ -1643,6 +1755,16 @@ describe(
             )
         );
 
+        expect(
+          screen.getByRole(
+            "heading",
+            {
+              name:
+                "Edit Task",
+            }
+          )
+        )
+          .toBeInTheDocument();
 
         expect(
           screen.getByPlaceholderText(
@@ -1652,7 +1774,6 @@ describe(
           .toHaveValue(
             "Create homepage"
           );
-
 
         expect(
           screen.getByPlaceholderText(
@@ -1669,9 +1790,7 @@ describe(
 
     /*
      * =========================================================
-     * TEST 23
-     *
-     * UPDATE TASK
+     * TEST 23 - UPDATE TASK
      * =========================================================
      */
 
@@ -1682,20 +1801,25 @@ describe(
         const user =
           userEvent.setup();
 
-
         render(
           <Dashboard />
         );
 
-
-        await selectWebsiteProject(
-          user
+        await user.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
+        const taskTitle =
+          await screen.findByText(
+            "Create homepage"
+          );
 
         const taskCard =
-          await getHomepageTaskCard();
-
+          taskTitle.closest(
+            "article"
+          );
 
         await user.click(
           within(
@@ -1710,25 +1834,35 @@ describe(
             )
         );
 
-
         const titleInput =
           screen.getByPlaceholderText(
             "Enter task title"
           );
 
+        const descriptionInput =
+          screen.getByPlaceholderText(
+            "Describe the task"
+          );
 
         await user.clear(
           titleInput
         );
-
 
         await user.type(
           titleInput,
           "Updated Dashboard Task"
         );
 
+        await user.clear(
+          descriptionInput
+        );
 
-        const taskPanel =
+        await user.type(
+          descriptionInput,
+          "Updated task description."
+        );
+
+        const taskForm =
           screen.getByRole(
             "heading",
             {
@@ -1740,12 +1874,36 @@ describe(
               ".task-form-panel"
             );
 
-
         const form =
           within(
-            taskPanel
+            taskForm
           );
 
+        await user.selectOptions(
+          form.getByLabelText(
+            "Status"
+          ),
+          "COMPLETED"
+        );
+
+        await user.selectOptions(
+          form.getByLabelText(
+            "Priority"
+          ),
+          "LOW"
+        );
+
+        fireEvent.change(
+          form.getByLabelText(
+            "Due Date"
+          ),
+          {
+            target: {
+              value:
+                "2026-10-15",
+            },
+          }
+        );
 
         await user.click(
           form.getByRole(
@@ -1757,17 +1915,40 @@ describe(
           )
         );
 
-
         await waitFor(
           () => {
 
             expect(
               updateTask
             )
-              .toHaveBeenCalled();
+              .toHaveBeenCalledWith(
+                1,
+                101,
+                {
+                  title:
+                    "Updated Dashboard Task",
+                  description:
+                    "Updated task description.",
+                  status:
+                    "COMPLETED",
+                  priority:
+                    "LOW",
+                  dueDate:
+                    "2026-10-15",
+                  assigneeId:
+                    null,
+                }
+              );
 
           }
         );
+
+        expect(
+          await screen.findByText(
+            "Task updated successfully."
+          )
+        )
+          .toBeInTheDocument();
 
       }
     );
@@ -1775,9 +1956,7 @@ describe(
 
     /*
      * =========================================================
-     * TEST 24
-     *
-     * DELETE TASK
+     * TEST 24 - DELETE TASK
      * =========================================================
      */
 
@@ -1788,20 +1967,25 @@ describe(
         const user =
           userEvent.setup();
 
-
         render(
           <Dashboard />
         );
 
-
-        await selectWebsiteProject(
-          user
+        await user.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
+        const taskTitle =
+          await screen.findByText(
+            "Create homepage"
+          );
 
         const taskCard =
-          await getHomepageTaskCard();
-
+          taskTitle.closest(
+            "article"
+          );
 
         await user.click(
           within(
@@ -1816,6 +2000,12 @@ describe(
             )
         );
 
+        expect(
+          window.confirm
+        )
+          .toHaveBeenCalledWith(
+            "Are you sure you want to delete this task?"
+          );
 
         await waitFor(
           () => {
@@ -1831,15 +2021,20 @@ describe(
           }
         );
 
+        expect(
+          await screen.findByText(
+            "Task deleted successfully."
+          )
+        )
+          .toBeInTheDocument();
+
       }
     );
 
 
     /*
      * =========================================================
-     * TEST 25
-     *
-     * CANCEL TASK DELETE
+     * TEST 25 - CANCEL TASK DELETE
      * =========================================================
      */
 
@@ -1850,26 +2045,30 @@ describe(
         const user =
           userEvent.setup();
 
-
         window.confirm =
           vi.fn(
             () => false
           );
 
-
         render(
           <Dashboard />
         );
 
-
-        await selectWebsiteProject(
-          user
+        await user.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
+        const taskTitle =
+          await screen.findByText(
+            "Create homepage"
+          );
 
         const taskCard =
-          await getHomepageTaskCard();
-
+          taskTitle.closest(
+            "article"
+          );
 
         await user.click(
           within(
@@ -1884,7 +2083,6 @@ describe(
             )
         );
 
-
         expect(
           deleteTask
         )
@@ -1897,9 +2095,7 @@ describe(
 
     /*
      * =========================================================
-     * TEST 26
-     *
-     * QUICK STATUS
+     * TEST 26 - QUICK STATUS CHANGE
      * =========================================================
      */
 
@@ -1910,20 +2106,25 @@ describe(
         const user =
           userEvent.setup();
 
-
         render(
           <Dashboard />
         );
 
-
-        await selectWebsiteProject(
-          user
+        await user.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
+        const taskTitle =
+          await screen.findByText(
+            "Create homepage"
+          );
 
         const taskCard =
-          await getHomepageTaskCard();
-
+          taskTitle.closest(
+            "article"
+          );
 
         await user.selectOptions(
           within(
@@ -1934,7 +2135,6 @@ describe(
             ),
           "IN_PROGRESS"
         );
-
 
         await waitFor(
           () => {
@@ -1956,11 +2156,20 @@ describe(
                     "HIGH",
                   dueDate:
                     "2026-09-10",
+                  assigneeId:
+                    null,
                 }
               );
 
           }
         );
+
+        expect(
+          await screen.findByText(
+            "Task status changed to In Progress."
+          )
+        )
+          .toBeInTheDocument();
 
       }
     );
@@ -1968,9 +2177,7 @@ describe(
 
     /*
      * =========================================================
-     * TEST 27
-     *
-     * MARK COMPLETE
+     * TEST 27 - MARK TASK COMPLETE
      * =========================================================
      */
 
@@ -1981,20 +2188,25 @@ describe(
         const user =
           userEvent.setup();
 
-
         render(
           <Dashboard />
         );
 
-
-        await selectWebsiteProject(
-          user
+        await user.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
 
+        const taskTitle =
+          await screen.findByText(
+            "Create homepage"
+          );
 
         const taskCard =
-          await getHomepageTaskCard();
-
+          taskTitle.closest(
+            "article"
+          );
 
         await user.click(
           within(
@@ -2009,7 +2221,6 @@ describe(
             )
         );
 
-
         await waitFor(
           () => {
 
@@ -2030,11 +2241,20 @@ describe(
                     "HIGH",
                   dueDate:
                     "2026-09-10",
+                  assigneeId:
+                    null,
                 }
               );
 
           }
         );
+
+        expect(
+          await screen.findByText(
+            '"Create homepage" marked complete.'
+          )
+        )
+          .toBeInTheDocument();
 
       }
     );
@@ -2042,9 +2262,7 @@ describe(
 
     /*
      * =========================================================
-     * TEST 28
-     *
-     * TASK SAVE ERROR
+     * TEST 28 - TASK SAVE ERROR
      * =========================================================
      */
 
@@ -2055,23 +2273,21 @@ describe(
         const user =
           userEvent.setup();
 
-
         createTask.mockRejectedValue(
           new Error(
             "Unable to save task."
           )
         );
 
-
         render(
           <Dashboard />
         );
 
-
-        await selectWebsiteProject(
-          user
+        await user.click(
+          await screen.findByText(
+            "Website Redesign"
+          )
         );
-
 
         await user.click(
           screen.getByRole(
@@ -2083,14 +2299,12 @@ describe(
           )
         );
 
-
         await user.type(
           screen.getByPlaceholderText(
             "Enter task title"
           ),
           "Broken Task"
         );
-
 
         await user.click(
           screen.getByRole(
@@ -2102,784 +2316,12 @@ describe(
           )
         );
 
-
         expect(
           await screen.findByText(
             "Unable to save task."
           )
         )
           .toBeInTheDocument();
-
-      }
-    );
-
-
-    /*
-     * =========================================================
-     * TEST 29
-     *
-     * SEARCH TASKS
-     * =========================================================
-     */
-
-    it(
-      "sends the debounced search term to the server",
-      async () => {
-
-        const user =
-          userEvent.setup();
-
-
-        render(
-          <Dashboard />
-        );
-
-
-        await selectWebsiteProject(
-          user
-        );
-
-
-        await screen.findByText(
-          "Create homepage"
-        );
-
-
-        await user.type(
-          screen.getByPlaceholderText(
-            "Search title or description"
-          ),
-          "homepage"
-        );
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                {
-                  page: 0,
-                  size: 10,
-                  status: "ALL",
-                  priority: "ALL",
-                  search:
-                    "homepage",
-                  dueDateFilter:
-                    "ALL",
-                  sortBy:
-                    "dueDate",
-                  sortDirection:
-                    "asc",
-                }
-              );
-
-          },
-          {
-            timeout:
-              2000,
-          }
-        );
-
-      }
-    );
-
-
-    /*
-     * =========================================================
-     * TEST 30
-     *
-     * STATUS FILTER
-     * =========================================================
-     */
-
-    it(
-      "sends the selected status filter to the server",
-      async () => {
-
-        const user =
-          userEvent.setup();
-
-
-        render(
-          <Dashboard />
-        );
-
-
-        await selectWebsiteProject(
-          user
-        );
-
-
-        await screen.findByText(
-          "Create homepage"
-        );
-
-
-        await user.selectOptions(
-          screen.getByLabelText(
-            "Status"
-          ),
-          "IN_PROGRESS"
-        );
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                expect.objectContaining({
-                  page: 0,
-                  status:
-                    "IN_PROGRESS",
-                })
-              );
-
-          }
-        );
-
-      }
-    );
-
-
-    /*
-     * =========================================================
-     * TEST 31
-     *
-     * PRIORITY FILTER
-     * =========================================================
-     */
-
-    it(
-      "sends the selected priority filter to the server",
-      async () => {
-
-        const user =
-          userEvent.setup();
-
-
-        render(
-          <Dashboard />
-        );
-
-
-        await selectWebsiteProject(
-          user
-        );
-
-
-        await screen.findByText(
-          "Create homepage"
-        );
-
-
-        await user.selectOptions(
-          screen.getByLabelText(
-            "Priority"
-          ),
-          "HIGH"
-        );
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                expect.objectContaining({
-                  page: 0,
-                  priority:
-                    "HIGH",
-                })
-              );
-
-          }
-        );
-
-      }
-    );
-
-
-    /*
-     * =========================================================
-     * TEST 32
-     *
-     * DUE DATE FILTER
-     * =========================================================
-     */
-
-    it(
-      "sends the selected due date filter to the server",
-      async () => {
-
-        const user =
-          userEvent.setup();
-
-
-        render(
-          <Dashboard />
-        );
-
-
-        await selectWebsiteProject(
-          user
-        );
-
-
-        await screen.findByText(
-          "Create homepage"
-        );
-
-
-        await user.selectOptions(
-          screen.getByLabelText(
-            "Due Date"
-          ),
-          "OVERDUE"
-        );
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                expect.objectContaining({
-                  page: 0,
-                  dueDateFilter:
-                    "OVERDUE",
-                })
-              );
-
-          }
-        );
-
-      }
-    );
-
-
-    /*
-     * =========================================================
-     * TEST 33
-     *
-     * SORT OPTION
-     * =========================================================
-     */
-
-    it(
-      "maps the selected sort option to backend sort parameters",
-      async () => {
-
-        const user =
-          userEvent.setup();
-
-
-        render(
-          <Dashboard />
-        );
-
-
-        await selectWebsiteProject(
-          user
-        );
-
-
-        await screen.findByText(
-          "Create homepage"
-        );
-
-
-        await user.selectOptions(
-          screen.getByLabelText(
-            "Sort By"
-          ),
-          "DUE_DATE_DESC"
-        );
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                expect.objectContaining({
-                  page: 0,
-                  sortBy:
-                    "dueDate",
-                  sortDirection:
-                    "desc",
-                })
-              );
-
-          }
-        );
-
-      }
-    );
-
-
-    /*
-     * =========================================================
-     * TEST 34
-     *
-     * CLEAR FILTERS
-     * =========================================================
-     */
-
-    it(
-      "clears active filters and reloads the default task query",
-      async () => {
-
-        const user =
-          userEvent.setup();
-
-
-        render(
-          <Dashboard />
-        );
-
-
-        await selectWebsiteProject(
-          user
-        );
-
-
-        await screen.findByText(
-          "Create homepage"
-        );
-
-
-        await user.selectOptions(
-          screen.getByLabelText(
-            "Status"
-          ),
-          "COMPLETED"
-        );
-
-
-        await user.selectOptions(
-          screen.getByLabelText(
-            "Priority"
-          ),
-          "LOW"
-        );
-
-
-        await user.selectOptions(
-          screen.getByLabelText(
-            "Due Date"
-          ),
-          "DUE_SOON"
-        );
-
-
-        const searchInput =
-          screen.getByPlaceholderText(
-            "Search title or description"
-          );
-
-
-        await user.type(
-          searchInput,
-          "navigation"
-        );
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                expect.objectContaining({
-                  search:
-                    "navigation",
-                  status:
-                    "COMPLETED",
-                  priority:
-                    "LOW",
-                  dueDateFilter:
-                    "DUE_SOON",
-                })
-              );
-
-          },
-          {
-            timeout:
-              2000,
-          }
-        );
-
-
-        await user.click(
-          screen.getByRole(
-            "button",
-            {
-              name:
-                "Clear Filters",
-            }
-          )
-        );
-
-
-        expect(
-          searchInput
-        )
-          .toHaveValue(
-            ""
-          );
-
-
-        expect(
-          screen.getByLabelText(
-            "Status"
-          )
-        )
-          .toHaveValue(
-            "ALL"
-          );
-
-
-        expect(
-          screen.getByLabelText(
-            "Priority"
-          )
-        )
-          .toHaveValue(
-            "ALL"
-          );
-
-
-        expect(
-          screen.getByLabelText(
-            "Due Date"
-          )
-        )
-          .toHaveValue(
-            "ALL"
-          );
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                expect.objectContaining({
-                  page: 0,
-                  search: "",
-                  status:
-                    "ALL",
-                  priority:
-                    "ALL",
-                  dueDateFilter:
-                    "ALL",
-                })
-              );
-
-          }
-        );
-
-      }
-    );
-
-
-    /*
-     * =========================================================
-     * TEST 35
-     *
-     * PAGE SIZE
-     * =========================================================
-     */
-
-    it(
-      "reloads the first task page when page size changes",
-      async () => {
-
-        const user =
-          userEvent.setup();
-
-
-        render(
-          <Dashboard />
-        );
-
-
-        await selectWebsiteProject(
-          user
-        );
-
-
-        await screen.findByText(
-          "Create homepage"
-        );
-
-
-        const pageSizeLabel =
-          screen.getByText(
-            "Per page"
-          )
-            .closest(
-              "label"
-            );
-
-
-        const pageSizeSelect =
-          within(
-            pageSizeLabel
-          )
-            .getByRole(
-              "combobox"
-            );
-
-
-        await user.selectOptions(
-          pageSizeSelect,
-          "20"
-        );
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                expect.objectContaining({
-                  page: 0,
-                  size: 20,
-                })
-              );
-
-          }
-        );
-
-      }
-    );
-
-
-    /*
-     * =========================================================
-     * TEST 36
-     *
-     * PAGINATION
-     * =========================================================
-     */
-
-    it(
-      "loads the next and previous server pages",
-      async () => {
-
-        const user =
-          userEvent.setup();
-
-
-        getProjectTasksPage.mockImplementation(
-          async (
-            projectId,
-            options
-          ) => {
-
-            const page =
-              options.page;
-
-
-            return {
-              content: [
-                {
-                  id:
-                    200 +
-                    page,
-
-                  title:
-                    `Page ${page + 1} Task`,
-
-                  description:
-                    `Task on page ${page + 1}`,
-
-                  status:
-                    "OPEN",
-
-                  priority:
-                    "MEDIUM",
-
-                  dueDate:
-                    "2026-10-20",
-                },
-              ],
-
-              totalElements:
-                3,
-
-              totalPages:
-                3,
-
-              numberOfElements:
-                1,
-
-              number:
-                page,
-
-              first:
-                page === 0,
-
-              last:
-                page === 2,
-            };
-
-          }
-        );
-
-
-        render(
-          <Dashboard />
-        );
-
-
-        await selectWebsiteProject(
-          user
-        );
-
-
-        expect(
-          await screen.findByText(
-            "Page 1 Task"
-          )
-        )
-          .toBeInTheDocument();
-
-
-        let pagination =
-          screen.getByRole(
-            "navigation",
-            {
-              name:
-                "Task pagination",
-            }
-          );
-
-
-        await user.click(
-          within(
-            pagination
-          )
-            .getByRole(
-              "button",
-              {
-                name:
-                  "Next →",
-              }
-            )
-        );
-
-
-        expect(
-          await screen.findByText(
-            "Page 2 Task"
-          )
-        )
-          .toBeInTheDocument();
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                expect.objectContaining({
-                  page: 1,
-                })
-              );
-
-          }
-        );
-
-
-        expect(
-          screen.getByText(
-            "Page 2 of 3"
-          )
-        )
-          .toBeInTheDocument();
-
-
-        /*
-         * Re-query after React re-render.
-         */
-
-        pagination =
-          screen.getByRole(
-            "navigation",
-            {
-              name:
-                "Task pagination",
-            }
-          );
-
-
-        await user.click(
-          within(
-            pagination
-          )
-            .getByRole(
-              "button",
-              {
-                name:
-                  "← Previous",
-              }
-            )
-        );
-
-
-        expect(
-          await screen.findByText(
-            "Page 1 Task"
-          )
-        )
-          .toBeInTheDocument();
-
-
-        await waitFor(
-          () => {
-
-            expect(
-              getProjectTasksPage
-            )
-              .toHaveBeenLastCalledWith(
-                1,
-                expect.objectContaining({
-                  page: 0,
-                })
-              );
-
-          }
-        );
 
       }
     );

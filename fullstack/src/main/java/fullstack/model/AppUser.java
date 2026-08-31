@@ -1,6 +1,7 @@
 package fullstack.model;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -14,176 +15,150 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import jakarta.persistence.Transient;
 
 @Entity
 @Table(name = "app_users")
-public class AppUser
-        implements UserDetails {
+public class AppUser implements UserDetails {
 
     private static final long serialVersionUID = 1L;
 
-    /*
-     * =====================================================
-     * DATABASE ID
-     * =====================================================
-     */
-
     @Id
-    @GeneratedValue(
-        strategy = GenerationType.IDENTITY
-    )
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /*
-     * =====================================================
-     * DISPLAY NAME
-     * =====================================================
-     */
-
     @Column(
-        nullable = false
+            nullable = false,
+            length = 255
     )
     private String name;
 
-    /*
-     * =====================================================
-     * EMAIL / LOGIN IDENTIFIER
-     * =====================================================
-     *
-     * This application authenticates users by email.
-     *
-     * There is intentionally NO username field in the
-     * database.
-     */
     @Column(
-        nullable = false,
-        unique = true
+            nullable = false,
+            unique = true,
+            length = 255
     )
     private String email;
 
-    /*
-     * =====================================================
-     * PASSWORD
-     * =====================================================
-     *
-     * The password stored here should already be encoded.
-     *
-     * JsonIgnore prevents it from being serialized and
-     * returned to the React frontend.
-     */
     @JsonIgnore
     @Column(
-        nullable = false
+            nullable = false,
+            length = 255
     )
     private String password;
 
     /*
-     * =====================================================
-     * ROLE
-     * =====================================================
+     * Existing project design uses UserRole.
+     *
+     * Stored in SQL Server as text such as:
+     *
+     * USER
+     * ADMIN
      */
-
     @Enumerated(EnumType.STRING)
     @Column(
-        nullable = false
+            nullable = false,
+            length = 255
     )
-    private UserRole role =
-        UserRole.USER;
+    private UserRole role;
 
-    /*
-     * =====================================================
-     * ENABLED
-     * =====================================================
-     */
+    @Column(nullable = false)
+    private boolean enabled = true;
 
     @Column(
-        nullable = false
-    )
-    private boolean enabled =
-        true;
-
-    /*
-     * =====================================================
-     * CREATED DATE
-     * =====================================================
-     *
-     * Records when the account was first created.
-     */
-    @Column(
-        name = "created_date",
-        nullable = false,
-        updatable = false
+            name = "created_date",
+            nullable = false
     )
     private LocalDateTime createdDate;
 
     /*
-     * =====================================================
-     * DEFAULT CONSTRUCTOR
-     * =====================================================
+     * Sequence 13A
      *
-     * Required by JPA.
+     * Inverse side of Task.assignee.
+     *
+     * JsonIgnore prevents recursive serialization:
+     *
+     * AppUser -> Task -> AppUser -> Task ...
      */
+    @JsonIgnore
+    @OneToMany(
+            mappedBy = "assignee",
+            fetch = FetchType.LAZY
+    )
+    private List<Task> assignedTasks =
+            new ArrayList<>();
+
     public AppUser() {
     }
 
-    /*
-     * =====================================================
-     * CONSTRUCTOR
-     * =====================================================
-     */
-
-    public AppUser(
-            String name,
-            String email,
-            String password,
-            UserRole role,
-            boolean enabled) {
-
-        this.name =
-            name;
-
-        this.email =
-            email;
-
-        this.password =
-            password;
-
-        this.role =
-            role;
-
-        this.enabled =
-            enabled;
-    }
-
-    /*
-     * =====================================================
-     * PRE-PERSIST
-     * =====================================================
-     *
-     * Automatically assigns createdDate before Hibernate
-     * inserts a new AppUser.
-     */
     @PrePersist
     protected void onCreate() {
 
         if (createdDate == null) {
-
             createdDate =
-                LocalDateTime.now();
+                    LocalDateTime.now();
         }
     }
 
-    /*
-     * =====================================================
-     * ID
-     * =====================================================
-     */
+    // =========================================================
+    // SPRING SECURITY
+    // =========================================================
+
+    @Override
+    public Collection<? extends GrantedAuthority>
+            getAuthorities() {
+
+        if (role == null) {
+
+            return List.of();
+        }
+
+        return List.of(
+                new SimpleGrantedAuthority(
+                        "ROLE_" + role.name()
+                )
+        );
+    }
+
+    @Override
+    public String getUsername() {
+
+        return email;
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+
+        return enabled;
+    }
+
+    // =========================================================
+    // GETTERS / SETTERS
+    // =========================================================
 
     public Long getId() {
 
@@ -193,15 +168,8 @@ public class AppUser
     public void setId(
             Long id) {
 
-        this.id =
-            id;
+        this.id = id;
     }
-
-    /*
-     * =====================================================
-     * NAME
-     * =====================================================
-     */
 
     public String getName() {
 
@@ -211,15 +179,8 @@ public class AppUser
     public void setName(
             String name) {
 
-        this.name =
-            name;
+        this.name = name;
     }
-
-    /*
-     * =====================================================
-     * EMAIL
-     * =====================================================
-     */
 
     public String getEmail() {
 
@@ -229,15 +190,8 @@ public class AppUser
     public void setEmail(
             String email) {
 
-        this.email =
-            email;
+        this.email = email;
     }
-
-    /*
-     * =====================================================
-     * PASSWORD
-     * =====================================================
-     */
 
     @Override
     public String getPassword() {
@@ -248,15 +202,8 @@ public class AppUser
     public void setPassword(
             String password) {
 
-        this.password =
-            password;
+        this.password = password;
     }
-
-    /*
-     * =====================================================
-     * ROLE
-     * =====================================================
-     */
 
     public UserRole getRole() {
 
@@ -266,15 +213,14 @@ public class AppUser
     public void setRole(
             UserRole role) {
 
-        this.role =
-            role;
+        this.role = role;
     }
 
-    /*
-     * =====================================================
-     * CREATED DATE
-     * =====================================================
-     */
+    public void setEnabled(
+            boolean enabled) {
+
+        this.enabled = enabled;
+    }
 
     public LocalDateTime getCreatedDate() {
 
@@ -285,96 +231,18 @@ public class AppUser
             LocalDateTime createdDate) {
 
         this.createdDate =
-            createdDate;
+                createdDate;
     }
 
-    /*
-     * =====================================================
-     * SPRING SECURITY USERNAME
-     * =====================================================
-     *
-     * Spring Security requires UserDetails.getUsername().
-     *
-     * In this application, the user's EMAIL is the login
-     * identifier.
-     *
-     * @Transient explicitly tells Hibernate/JPA:
-     *
-     * DO NOT create a "username" database column for this
-     * method.
-     */
-    @Transient
-    @Override
-    public String getUsername() {
+    public List<Task> getAssignedTasks() {
 
-        return email;
+        return assignedTasks;
     }
 
-    /*
-     * =====================================================
-     * AUTHORITIES
-     * =====================================================
-     *
-     * Spring Security expects roles in this form:
-     *
-     * ROLE_USER
-     * ROLE_ADMIN
-     */
-    @Transient
-    @Override
-    public Collection<? extends GrantedAuthority>
-        getAuthorities() {
+    public void setAssignedTasks(
+            List<Task> assignedTasks) {
 
-        return List.of(
-            new SimpleGrantedAuthority(
-                "ROLE_" + role.name()
-            )
-        );
-    }
-
-    /*
-     * =====================================================
-     * ENABLED
-     * =====================================================
-     */
-
-    @Override
-    public boolean isEnabled() {
-
-        return enabled;
-    }
-
-    public void setEnabled(
-            boolean enabled) {
-
-        this.enabled =
-            enabled;
-    }
-
-    /*
-     * =====================================================
-     * SPRING SECURITY ACCOUNT STATUS
-     * =====================================================
-     */
-
-    @Transient
-    @Override
-    public boolean isAccountNonExpired() {
-
-        return true;
-    }
-
-    @Transient
-    @Override
-    public boolean isAccountNonLocked() {
-
-        return true;
-    }
-
-    @Transient
-    @Override
-    public boolean isCredentialsNonExpired() {
-
-        return true;
+        this.assignedTasks =
+                assignedTasks;
     }
 }

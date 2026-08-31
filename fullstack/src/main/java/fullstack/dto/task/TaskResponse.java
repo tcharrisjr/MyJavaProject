@@ -5,10 +5,6 @@ import java.time.LocalDateTime;
 
 public class TaskResponse {
 
-    // =========================================================
-    // RESPONSE FIELDS
-    // =========================================================
-
     private Long id;
 
     private Long projectId;
@@ -28,58 +24,20 @@ public class TaskResponse {
     private LocalDateTime updatedDate;
 
     // =========================================================
-    // CONSTRUCTOR
+    // SEQUENCE 13A - ASSIGNEE FIELDS
+    // =========================================================
+
+    private Long assigneeId;
+
+    private String assigneeName;
+
+    private String assigneeEmail;
+
+    // =========================================================
+    // DEFAULT CONSTRUCTOR
     // =========================================================
 
     public TaskResponse() {
-    }
-
-    public TaskResponse(
-
-            Long id,
-
-            Long projectId,
-
-            String title,
-
-            String description,
-
-            String status,
-
-            String priority,
-
-            LocalDate dueDate,
-
-            LocalDateTime createdDate,
-
-            LocalDateTime updatedDate) {
-
-        this.id =
-                id;
-
-        this.projectId =
-                projectId;
-
-        this.title =
-                title;
-
-        this.description =
-                description;
-
-        this.status =
-                status;
-
-        this.priority =
-                priority;
-
-        this.dueDate =
-                dueDate;
-
-        this.createdDate =
-                createdDate;
-
-        this.updatedDate =
-                updatedDate;
     }
 
     // =========================================================
@@ -87,6 +45,7 @@ public class TaskResponse {
     // =========================================================
 
     public Long getId() {
+
         return id;
     }
 
@@ -97,90 +56,127 @@ public class TaskResponse {
     }
 
     public Long getProjectId() {
+
         return projectId;
     }
 
     public void setProjectId(
             Long projectId) {
 
-        this.projectId =
-                projectId;
+        this.projectId = projectId;
     }
 
     public String getTitle() {
+
         return title;
     }
 
     public void setTitle(
             String title) {
 
-        this.title =
-                title;
+        this.title = title;
     }
 
     public String getDescription() {
+
         return description;
     }
 
     public void setDescription(
             String description) {
 
-        this.description =
-                description;
+        this.description = description;
     }
 
     public String getStatus() {
+
         return status;
     }
 
     public void setStatus(
             String status) {
 
-        this.status =
-                status;
+        this.status = status;
     }
 
     public String getPriority() {
+
         return priority;
     }
 
     public void setPriority(
             String priority) {
 
-        this.priority =
-                priority;
+        this.priority = priority;
     }
 
     public LocalDate getDueDate() {
+
         return dueDate;
     }
 
     public void setDueDate(
             LocalDate dueDate) {
 
-        this.dueDate =
-                dueDate;
+        this.dueDate = dueDate;
     }
 
     public LocalDateTime getCreatedDate() {
+
         return createdDate;
     }
 
     public void setCreatedDate(
             LocalDateTime createdDate) {
 
-        this.createdDate =
-                createdDate;
+        this.createdDate = createdDate;
     }
 
     public LocalDateTime getUpdatedDate() {
+
         return updatedDate;
     }
 
     public void setUpdatedDate(
             LocalDateTime updatedDate) {
 
-        this.updatedDate =
-                updatedDate;
+        this.updatedDate = updatedDate;
+    }
+
+    // =========================================================
+    // ASSIGNEE GETTERS / SETTERS
+    // =========================================================
+
+    public Long getAssigneeId() {
+
+        return assigneeId;
+    }
+
+    public void setAssigneeId(
+            Long assigneeId) {
+
+        this.assigneeId = assigneeId;
+    }
+
+    public String getAssigneeName() {
+
+        return assigneeName;
+    }
+
+    public void setAssigneeName(
+            String assigneeName) {
+
+        this.assigneeName = assigneeName;
+    }
+
+    public String getAssigneeEmail() {
+
+        return assigneeEmail;
+    }
+
+    public void setAssigneeEmail(
+            String assigneeEmail) {
+
+        this.assigneeEmail = assigneeEmail;
     }
 }
