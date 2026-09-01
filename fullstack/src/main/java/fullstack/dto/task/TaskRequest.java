@@ -1,6 +1,8 @@
 package fullstack.dto.task;
 
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -55,6 +57,20 @@ public class TaskRequest {
     // =========================================================
 
     private Long assigneeId;
+
+    // =========================================================
+    // SEQUENCE 13B - LABELS
+    //
+    // Labels are sent from the frontend as simple names.
+    //
+    // Example:
+    // ["Frontend", "Bug", "Urgent"]
+    //
+    // The service layer will resolve these names to Label
+    // entities and attach them to the Task.
+    // =========================================================
+
+    private Set<String> labels = new HashSet<>();
 
     // =========================================================
     // CONSTRUCTOR
@@ -131,5 +147,23 @@ public class TaskRequest {
             Long assigneeId) {
 
         this.assigneeId = assigneeId;
+    }
+
+    // =========================================================
+    // LABEL GETTER / SETTER
+    // =========================================================
+
+    public Set<String> getLabels() {
+
+        return labels;
+    }
+
+    public void setLabels(
+            Set<String> labels) {
+
+        this.labels =
+                labels != null
+                        ? labels
+                        : new HashSet<>();
     }
 }

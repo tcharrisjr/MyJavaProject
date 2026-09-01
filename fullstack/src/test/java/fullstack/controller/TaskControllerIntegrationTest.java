@@ -2,7 +2,7 @@ package fullstack.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -11,91 +11,39 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
-import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
-
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.security.Principal;
-import java.util.Collections;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
-
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.FilterType;
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-
 import org.springframework.http.MediaType;
-
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-
 import org.springframework.test.web.servlet.MockMvc;
 
-import fullstack.dto.task.TaskRequest;
+import fullstack.dto.comment.TaskCommentRequest;
+import fullstack.dto.comment.TaskCommentResponse;
+import fullstack.security.JwtService;
+import fullstack.service.TaskCommentService;
+import fullstack.service.UserService;
 
-import fullstack.security.JwtAuthenticationFilter;
-
-import fullstack.service.ProjectService;
-import fullstack.service.TaskService;
-
-
-/**
- * =============================================================
- * TASK CONTROLLER INTEGRATION TEST
- * =============================================================
- *
- * Tests the TaskController MVC layer independently from the
- * production JWT security implementation.
- *
- * Security behavior is tested separately by:
- *
- * SecurityIntegrationTest
- *
- * This class verifies:
- *
- * 1. Get project tasks
- * 2. Get task statistics
- * 3. Create task
- * 4. Update task
- * 5. Delete task
- * 6. Paginated task retrieval
- * 7. Negative-page validation
- * 8. Minimum page-size validation
- * 9. Maximum page-size validation
- * 10. Sort-field validation
- * 11. Sort-direction validation
- * 12. Task-request validation
- * 13. Authenticated username propagation
- *
- * =============================================================
- */
-@WebMvcTest(
-        controllers = TaskController.class,
-        excludeFilters = {
-                @ComponentScan.Filter(
-                        type = FilterType.ASSIGNABLE_TYPE,
-                        classes = JwtAuthenticationFilter.class
-                )
-        }
-)
+@WebMvcTest(TaskCommentController.class)
 @AutoConfigureMockMvc(addFilters = false)
-class TaskControllerIntegrationTest {
-
+class TaskCommentControllerIntegrationTest {
 
     // =========================================================
-    // TEST CONSTANTS
+    // CONSTANTS
     // =========================================================
 
-    private static final String TEST_USER_EMAIL =
-            "testuser@example.com";
+    private static final String EMAIL =
+            "test@example.com";
 
     private static final Long PROJECT_ID =
             1L;
@@ -103,724 +51,702 @@ class TaskControllerIntegrationTest {
     private static final Long TASK_ID =
             10L;
 
+    private static final Long COMMENT_ID =
+            100L;
 
     // =========================================================
-    // MOCK MVC
+    // MVC
     // =========================================================
 
     @Autowired
     private MockMvc mockMvc;
 
-
     // =========================================================
-    // MOCK SERVICES
+    // MOCKED SERVICES
     // =========================================================
 
     @MockitoBean
-    private TaskService taskService;
+    private TaskCommentService taskCommentService;
+
+    /*
+     * JwtAuthenticationFilter is discovered while the
+     * WebMvcTest application context is created.
+     *
+     * MockMvc filters are disabled for these controller tests,
+     * but Spring must still satisfy the filter constructor
+     * dependencies while creating the test context.
+     */
+    @MockitoBean
+    private JwtService jwtService;
 
     @MockitoBean
-    private ProjectService projectService;
-
-
-    // =========================================================
-    // AUTHENTICATED PRINCIPAL HELPER
-    // =========================================================
-
-    private Principal authenticatedUser() {
-
-        return () -> TEST_USER_EMAIL;
-    }
-
+    private UserService userService;
 
     // =========================================================
-    // TEST 1
-    //
-    // GET ALL TASKS FOR PROJECT
-    //
-    // GET /api/projects/{projectId}/tasks
+    // GET COMMENTS
     // =========================================================
 
     @Test
-    void getTasks_authenticatedUser_returnsOk()
+    void getComments_whenAuthenticated_returnsOk()
             throws Exception {
 
+        TaskCommentResponse comment =
+                createCommentResponse();
+
         when(
-                taskService.getTasksByProject(
+                taskCommentService.getComments(
                         PROJECT_ID,
-                        TEST_USER_EMAIL
+                        TASK_ID,
+                        EMAIL
                 )
         )
         .thenReturn(
-                Collections.emptyList()
+                List.of(
+                        comment
+                )
         );
 
-
         mockMvc.perform(
-
                 get(
-                        "/api/projects/{projectId}/tasks",
-                        PROJECT_ID
+                        "/api/projects/{projectId}/tasks/{taskId}/comments",
+                        PROJECT_ID,
+                        TASK_ID
                 )
-
                 .principal(
-                        authenticatedUser()
+                        principal()
                 )
         )
-
-        .andDo(
-                print()
-        )
-
         .andExpect(
                 status().isOk()
         )
-
         .andExpect(
-                content().json("[]")
-        );
-
-
-        verify(
-                taskService
-        )
-        .getTasksByProject(
-                PROJECT_ID,
-                TEST_USER_EMAIL
-        );
-    }
-
-
-    // =========================================================
-    // TEST 2
-    //
-    // GET TASK STATISTICS
-    //
-    // GET /api/tasks/stats
-    // =========================================================
-
-    @Test
-    void getTaskStats_authenticatedUser_returnsOk()
-            throws Exception {
-
-        Map<String, Long> stats =
-                Map.of(
-                        "projects", 2L,
-                        "totalTasks", 12L,
-                        "open", 5L,
-                        "inProgress", 4L,
-                        "completed", 3L
-                );
-
-
-        when(
-                projectService.getProjectStats(
-                        TEST_USER_EMAIL
-                )
-        )
-        .thenReturn(
-                stats
-        );
-
-
-        mockMvc.perform(
-
-                get("/api/tasks/stats")
-
-                        .principal(
-                                authenticatedUser()
+                jsonPath("$[0].id")
+                        .value(
+                                COMMENT_ID
                         )
         )
-
-        .andDo(
-                print()
-        )
-
         .andExpect(
-                status().isOk()
+                jsonPath("$[0].taskId")
+                        .value(
+                                TASK_ID
+                        )
         )
-
         .andExpect(
-                content().json(
-                        """
-                        {
-                          "projects": 2,
-                          "totalTasks": 12,
-                          "open": 5,
-                          "inProgress": 4,
-                          "completed": 3
-                        }
-                        """
-                )
+                jsonPath("$[0].userId")
+                        .value(
+                                5L
+                        )
+        )
+        .andExpect(
+                jsonPath("$[0].authorName")
+                        .value(
+                                "Test User"
+                        )
+        )
+        .andExpect(
+                jsonPath("$[0].authorEmail")
+                        .value(
+                                EMAIL
+                        )
+        )
+        .andExpect(
+                jsonPath("$[0].commentText")
+                        .value(
+                                "Backend work is complete."
+                        )
         );
-
 
         verify(
-                projectService
+                taskCommentService
         )
-        .getProjectStats(
-                TEST_USER_EMAIL
-        );
-    }
-
-
-    // =========================================================
-    // TEST 3
-    //
-    // CREATE TASK
-    //
-    // POST /api/projects/{projectId}/tasks
-    //
-    // Expected:
-    //
-    // HTTP 201 Created
-    // =========================================================
-
-    @Test
-    void createTask_validRequest_returnsCreated()
-            throws Exception {
-
-        when(
-                taskService.createTask(
-                        eq(PROJECT_ID),
-                        any(TaskRequest.class),
-                        eq(TEST_USER_EMAIL)
-                )
-        )
-        .thenReturn(
-                null
-        );
-
-
-        mockMvc.perform(
-
-                post(
-                        "/api/projects/{projectId}/tasks",
-                        PROJECT_ID
-                )
-
-                .principal(
-                        authenticatedUser()
-                )
-
-                .contentType(
-                        MediaType.APPLICATION_JSON
-                )
-
-                .content(
-                        """
-                        {
-                          "title": "Integration Test Task",
-                          "description": "Task created by controller test",
-                          "status": "OPEN",
-                          "priority": "MEDIUM",
-                          "dueDate": "2026-09-15"
-                        }
-                        """
-                )
-        )
-
-        .andDo(
-                print()
-        )
-
-        .andExpect(
-                status().isCreated()
-        );
-
-
-        verify(
-                taskService
-        )
-        .createTask(
-                eq(PROJECT_ID),
-                any(TaskRequest.class),
-                eq(TEST_USER_EMAIL)
-        );
-    }
-
-
-    // =========================================================
-    // TEST 4
-    //
-    // UPDATE TASK
-    //
-    // PUT /api/projects/{projectId}/tasks/{taskId}
-    //
-    // Expected:
-    //
-    // HTTP 200 OK
-    // =========================================================
-
-    @Test
-    void updateTask_validRequest_returnsOk()
-            throws Exception {
-
-        when(
-                taskService.updateTask(
-                        eq(PROJECT_ID),
-                        eq(TASK_ID),
-                        any(TaskRequest.class),
-                        eq(TEST_USER_EMAIL)
-                )
-        )
-        .thenReturn(
-                null
-        );
-
-
-        mockMvc.perform(
-
-                put(
-                        "/api/projects/{projectId}/tasks/{taskId}",
-                        PROJECT_ID,
-                        TASK_ID
-                )
-
-                .principal(
-                        authenticatedUser()
-                )
-
-                .contentType(
-                        MediaType.APPLICATION_JSON
-                )
-
-                .content(
-                        """
-                        {
-                          "title": "Updated Integration Task",
-                          "description": "Updated task description",
-                          "status": "IN_PROGRESS",
-                          "priority": "HIGH",
-                          "dueDate": "2026-09-20"
-                        }
-                        """
-                )
-        )
-
-        .andDo(
-                print()
-        )
-
-        .andExpect(
-                status().isOk()
-        );
-
-
-        verify(
-                taskService
-        )
-        .updateTask(
-                eq(PROJECT_ID),
-                eq(TASK_ID),
-                any(TaskRequest.class),
-                eq(TEST_USER_EMAIL)
-        );
-    }
-
-
-    // =========================================================
-    // TEST 5
-    //
-    // DELETE TASK
-    //
-    // DELETE /api/projects/{projectId}/tasks/{taskId}
-    //
-    // Expected:
-    //
-    // HTTP 204 No Content
-    // =========================================================
-
-    @Test
-    void deleteTask_authenticatedUser_returnsNoContent()
-            throws Exception {
-
-        mockMvc.perform(
-
-                delete(
-                        "/api/projects/{projectId}/tasks/{taskId}",
-                        PROJECT_ID,
-                        TASK_ID
-                )
-
-                .principal(
-                        authenticatedUser()
-                )
-        )
-
-        .andDo(
-                print()
-        )
-
-        .andExpect(
-                status().isNoContent()
-        );
-
-
-        verify(
-                taskService
-        )
-        .deleteTask(
+        .getComments(
                 PROJECT_ID,
                 TASK_ID,
-                TEST_USER_EMAIL
+                EMAIL
         );
     }
 
-
     // =========================================================
-    // TEST 6
-    //
-    // PAGINATED TASK LIST
-    //
-    // GET /api/projects/{projectId}/tasks/page
+    // GET COMMENTS - EMPTY
     // =========================================================
 
     @Test
-    void getTasksPaged_validRequest_returnsOk()
+    void getComments_whenNoComments_returnsEmptyArray()
             throws Exception {
 
         when(
-                taskService.getTasksByProjectPaged(
-                        eq(PROJECT_ID),
-                        eq(TEST_USER_EMAIL),
-                        eq("OPEN"),
-                        eq("HIGH"),
-                        eq("test"),
-                        eq("overdue"),
-                        any(Pageable.class)
+                taskCommentService.getComments(
+                        PROJECT_ID,
+                        TASK_ID,
+                        EMAIL
                 )
         )
         .thenReturn(
-                Page.empty()
+                List.of()
         );
 
-
         mockMvc.perform(
-
                 get(
-                        "/api/projects/{projectId}/tasks/page",
-                        PROJECT_ID
+                        "/api/projects/{projectId}/tasks/{taskId}/comments",
+                        PROJECT_ID,
+                        TASK_ID
                 )
-
                 .principal(
-                        authenticatedUser()
-                )
-
-                .param(
-                        "page",
-                        "0"
-                )
-
-                .param(
-                        "size",
-                        "10"
-                )
-
-                .param(
-                        "status",
-                        "OPEN"
-                )
-
-                .param(
-                        "priority",
-                        "HIGH"
-                )
-
-                .param(
-                        "search",
-                        "test"
-                )
-
-                .param(
-                        "dueDateFilter",
-                        "overdue"
-                )
-
-                .param(
-                        "sortBy",
-                        "dueDate"
-                )
-
-                .param(
-                        "sortDirection",
-                        "desc"
+                        principal()
                 )
         )
-
-        .andDo(
-                print()
-        )
-
         .andExpect(
                 status().isOk()
+        )
+        .andExpect(
+                content().json(
+                        "[]"
+                )
         );
-
 
         verify(
-                taskService
+                taskCommentService
         )
-        .getTasksByProjectPaged(
-                eq(PROJECT_ID),
-                eq(TEST_USER_EMAIL),
-                eq("OPEN"),
-                eq("HIGH"),
-                eq("test"),
-                eq("overdue"),
-                any(Pageable.class)
+        .getComments(
+                PROJECT_ID,
+                TASK_ID,
+                EMAIL
         );
     }
 
-
     // =========================================================
-    // TEST 7
-    //
-    // NEGATIVE PAGE NUMBER
-    //
-    // Expected:
-    //
-    // HTTP 400 Bad Request
+    // CREATE COMMENT
     // =========================================================
 
     @Test
-    void getTasksPaged_negativePage_returnsBadRequest()
+    void createComment_whenValid_returns201()
             throws Exception {
 
-        mockMvc.perform(
+        TaskCommentResponse response =
+                createCommentResponse();
 
-                get(
-                        "/api/projects/{projectId}/tasks/page",
-                        PROJECT_ID
-                )
-
-                .principal(
-                        authenticatedUser()
-                )
-
-                .param(
-                        "page",
-                        "-1"
+        when(
+                taskCommentService.createComment(
+                        eq(
+                                PROJECT_ID
+                        ),
+                        eq(
+                                TASK_ID
+                        ),
+                        any(
+                                TaskCommentRequest.class
+                        ),
+                        eq(
+                                EMAIL
+                        )
                 )
         )
-
-        .andDo(
-                print()
-        )
-
-        .andExpect(
-                status().isBadRequest()
+        .thenReturn(
+                response
         );
-    }
 
-
-    // =========================================================
-    // TEST 8
-    //
-    // PAGE SIZE BELOW MINIMUM
-    //
-    // Expected:
-    //
-    // HTTP 400 Bad Request
-    // =========================================================
-
-    @Test
-    void getTasksPaged_pageSizeZero_returnsBadRequest()
-            throws Exception {
+        String requestJson =
+                """
+                {
+                  "commentText": "Backend work is complete."
+                }
+                """;
 
         mockMvc.perform(
-
-                get(
-                        "/api/projects/{projectId}/tasks/page",
-                        PROJECT_ID
-                )
-
-                .principal(
-                        authenticatedUser()
-                )
-
-                .param(
-                        "size",
-                        "0"
-                )
-        )
-
-        .andDo(
-                print()
-        )
-
-        .andExpect(
-                status().isBadRequest()
-        );
-    }
-
-
-    // =========================================================
-    // TEST 9
-    //
-    // PAGE SIZE ABOVE MAXIMUM
-    //
-    // Expected:
-    //
-    // HTTP 400 Bad Request
-    // =========================================================
-
-    @Test
-    void getTasksPaged_pageSizeAboveMaximum_returnsBadRequest()
-            throws Exception {
-
-        mockMvc.perform(
-
-                get(
-                        "/api/projects/{projectId}/tasks/page",
-                        PROJECT_ID
-                )
-
-                .principal(
-                        authenticatedUser()
-                )
-
-                .param(
-                        "size",
-                        "101"
-                )
-        )
-
-        .andDo(
-                print()
-        )
-
-        .andExpect(
-                status().isBadRequest()
-        );
-    }
-
-
-    // =========================================================
-    // TEST 10
-    //
-    // INVALID SORT FIELD
-    //
-    // Expected:
-    //
-    // HTTP 400 Bad Request
-    // =========================================================
-
-    @Test
-    void getTasksPaged_invalidSortField_returnsBadRequest()
-            throws Exception {
-
-        mockMvc.perform(
-
-                get(
-                        "/api/projects/{projectId}/tasks/page",
-                        PROJECT_ID
-                )
-
-                .principal(
-                        authenticatedUser()
-                )
-
-                .param(
-                        "sortBy",
-                        "notARealField"
-                )
-        )
-
-        .andDo(
-                print()
-        )
-
-        .andExpect(
-                status().isBadRequest()
-        );
-    }
-
-
-    // =========================================================
-    // TEST 11
-    //
-    // INVALID SORT DIRECTION
-    //
-    // Expected:
-    //
-    // HTTP 400 Bad Request
-    // =========================================================
-
-    @Test
-    void getTasksPaged_invalidSortDirection_returnsBadRequest()
-            throws Exception {
-
-        mockMvc.perform(
-
-                get(
-                        "/api/projects/{projectId}/tasks/page",
-                        PROJECT_ID
-                )
-
-                .principal(
-                        authenticatedUser()
-                )
-
-                .param(
-                        "sortDirection",
-                        "sideways"
-                )
-        )
-
-        .andDo(
-                print()
-        )
-
-        .andExpect(
-                status().isBadRequest()
-        );
-    }
-
-
-    // =========================================================
-    // TEST 12
-    //
-    // TASK REQUEST VALIDATION
-    //
-    // Missing title should fail request validation.
-    // =========================================================
-
-    @Test
-    void createTask_missingTitle_returnsBadRequest()
-            throws Exception {
-
-        mockMvc.perform(
-
                 post(
-                        "/api/projects/{projectId}/tasks",
-                        PROJECT_ID
+                        "/api/projects/{projectId}/tasks/{taskId}/comments",
+                        PROJECT_ID,
+                        TASK_ID
                 )
-
                 .principal(
-                        authenticatedUser()
+                        principal()
                 )
-
                 .contentType(
                         MediaType.APPLICATION_JSON
                 )
-
                 .content(
-                        """
-                        {
-                          "description": "Missing title",
-                          "status": "OPEN",
-                          "priority": "MEDIUM"
-                        }
-                        """
+                        requestJson
                 )
         )
-
-        .andDo(
-                print()
+        .andExpect(
+                status().isCreated()
         )
+        .andExpect(
+                jsonPath("$.id")
+                        .value(
+                                COMMENT_ID
+                        )
+        )
+        .andExpect(
+                jsonPath("$.taskId")
+                        .value(
+                                TASK_ID
+                        )
+        )
+        .andExpect(
+                jsonPath("$.userId")
+                        .value(
+                                5L
+                        )
+        )
+        .andExpect(
+                jsonPath("$.authorName")
+                        .value(
+                                "Test User"
+                        )
+        )
+        .andExpect(
+                jsonPath("$.authorEmail")
+                        .value(
+                                EMAIL
+                        )
+        )
+        .andExpect(
+                jsonPath("$.commentText")
+                        .value(
+                                "Backend work is complete."
+                        )
+        );
 
+        verify(
+                taskCommentService
+        )
+        .createComment(
+                eq(
+                        PROJECT_ID
+                ),
+                eq(
+                        TASK_ID
+                ),
+                any(
+                        TaskCommentRequest.class
+                ),
+                eq(
+                        EMAIL
+                )
+        );
+    }
+
+    // =========================================================
+    // CREATE COMMENT - BLANK
+    // =========================================================
+
+    @Test
+    void createComment_whenBlank_returns400()
+            throws Exception {
+
+        String requestJson =
+                """
+                {
+                  "commentText": "   "
+                }
+                """;
+
+        mockMvc.perform(
+                post(
+                        "/api/projects/{projectId}/tasks/{taskId}/comments",
+                        PROJECT_ID,
+                        TASK_ID
+                )
+                .principal(
+                        principal()
+                )
+                .contentType(
+                        MediaType.APPLICATION_JSON
+                )
+                .content(
+                        requestJson
+                )
+        )
         .andExpect(
                 status().isBadRequest()
         );
+
+        verify(
+                taskCommentService,
+                never()
+        )
+        .createComment(
+                any(),
+                any(),
+                any(
+                        TaskCommentRequest.class
+                ),
+                any()
+        );
+    }
+
+    // =========================================================
+    // CREATE COMMENT - TOO LONG
+    // =========================================================
+
+    @Test
+    void createComment_whenTextExceeds2000Characters_returns400()
+            throws Exception {
+
+        String longComment =
+                "A".repeat(
+                        2001
+                );
+
+        String requestJson =
+                """
+                {
+                  "commentText": "%s"
+                }
+                """.formatted(
+                        longComment
+                );
+
+        mockMvc.perform(
+                post(
+                        "/api/projects/{projectId}/tasks/{taskId}/comments",
+                        PROJECT_ID,
+                        TASK_ID
+                )
+                .principal(
+                        principal()
+                )
+                .contentType(
+                        MediaType.APPLICATION_JSON
+                )
+                .content(
+                        requestJson
+                )
+        )
+        .andExpect(
+                status().isBadRequest()
+        );
+
+        verify(
+                taskCommentService,
+                never()
+        )
+        .createComment(
+                any(),
+                any(),
+                any(
+                        TaskCommentRequest.class
+                ),
+                any()
+        );
+    }
+
+    // =========================================================
+    // UPDATE COMMENT
+    // =========================================================
+
+    @Test
+    void updateComment_whenValid_returns200()
+            throws Exception {
+
+        TaskCommentResponse response =
+                createCommentResponse();
+
+        response.setCommentText(
+                "Updated comment."
+        );
+
+        response.setUpdatedAt(
+                LocalDateTime.of(
+                        2026,
+                        8,
+                        31,
+                        11,
+                        0
+                )
+        );
+
+        when(
+                taskCommentService.updateComment(
+                        eq(
+                                PROJECT_ID
+                        ),
+                        eq(
+                                TASK_ID
+                        ),
+                        eq(
+                                COMMENT_ID
+                        ),
+                        any(
+                                TaskCommentRequest.class
+                        ),
+                        eq(
+                                EMAIL
+                        )
+                )
+        )
+        .thenReturn(
+                response
+        );
+
+        String requestJson =
+                """
+                {
+                  "commentText": "Updated comment."
+                }
+                """;
+
+        mockMvc.perform(
+                put(
+                        "/api/projects/{projectId}/tasks/{taskId}/comments/{commentId}",
+                        PROJECT_ID,
+                        TASK_ID,
+                        COMMENT_ID
+                )
+                .principal(
+                        principal()
+                )
+                .contentType(
+                        MediaType.APPLICATION_JSON
+                )
+                .content(
+                        requestJson
+                )
+        )
+        .andExpect(
+                status().isOk()
+        )
+        .andExpect(
+                jsonPath("$.id")
+                        .value(
+                                COMMENT_ID
+                        )
+        )
+        .andExpect(
+                jsonPath("$.taskId")
+                        .value(
+                                TASK_ID
+                        )
+        )
+        .andExpect(
+                jsonPath("$.commentText")
+                        .value(
+                                "Updated comment."
+                        )
+        )
+        .andExpect(
+                jsonPath("$.updatedAt")
+                        .exists()
+        );
+
+        verify(
+                taskCommentService
+        )
+        .updateComment(
+                eq(
+                        PROJECT_ID
+                ),
+                eq(
+                        TASK_ID
+                ),
+                eq(
+                        COMMENT_ID
+                ),
+                any(
+                        TaskCommentRequest.class
+                ),
+                eq(
+                        EMAIL
+                )
+        );
+    }
+
+    // =========================================================
+    // UPDATE COMMENT - BLANK
+    // =========================================================
+
+    @Test
+    void updateComment_whenBlank_returns400()
+            throws Exception {
+
+        String requestJson =
+                """
+                {
+                  "commentText": ""
+                }
+                """;
+
+        mockMvc.perform(
+                put(
+                        "/api/projects/{projectId}/tasks/{taskId}/comments/{commentId}",
+                        PROJECT_ID,
+                        TASK_ID,
+                        COMMENT_ID
+                )
+                .principal(
+                        principal()
+                )
+                .contentType(
+                        MediaType.APPLICATION_JSON
+                )
+                .content(
+                        requestJson
+                )
+        )
+        .andExpect(
+                status().isBadRequest()
+        );
+
+        verify(
+                taskCommentService,
+                never()
+        )
+        .updateComment(
+                any(),
+                any(),
+                any(),
+                any(
+                        TaskCommentRequest.class
+                ),
+                any()
+        );
+    }
+
+    // =========================================================
+    // DELETE COMMENT
+    // =========================================================
+
+    @Test
+    void deleteComment_whenValid_returns204()
+            throws Exception {
+
+        mockMvc.perform(
+                delete(
+                        "/api/projects/{projectId}/tasks/{taskId}/comments/{commentId}",
+                        PROJECT_ID,
+                        TASK_ID,
+                        COMMENT_ID
+                )
+                .principal(
+                        principal()
+                )
+        )
+        .andExpect(
+                status().isNoContent()
+        )
+        .andExpect(
+                content().string(
+                        ""
+                )
+        );
+
+        verify(
+                taskCommentService
+        )
+        .deleteComment(
+                PROJECT_ID,
+                TASK_ID,
+                COMMENT_ID,
+                EMAIL
+        );
+    }
+
+    // =========================================================
+    // COMMENT COUNT
+    // =========================================================
+
+    @Test
+    void getCommentCount_whenAuthenticated_returnsCount()
+            throws Exception {
+
+        when(
+                taskCommentService.getCommentCount(
+                        PROJECT_ID,
+                        TASK_ID,
+                        EMAIL
+                )
+        )
+        .thenReturn(
+                4L
+        );
+
+        mockMvc.perform(
+                get(
+                        "/api/projects/{projectId}/tasks/{taskId}/comments/count",
+                        PROJECT_ID,
+                        TASK_ID
+                )
+                .principal(
+                        principal()
+                )
+        )
+        .andExpect(
+                status().isOk()
+        )
+        .andExpect(
+                content().string(
+                        "4"
+                )
+        );
+
+        verify(
+                taskCommentService
+        )
+        .getCommentCount(
+                PROJECT_ID,
+                TASK_ID,
+                EMAIL
+        );
+    }
+
+    // =========================================================
+    // PRINCIPAL
+    // =========================================================
+
+    private Principal principal() {
+
+        return () ->
+                EMAIL;
+    }
+
+    // =========================================================
+    // TEST RESPONSE DATA
+    // =========================================================
+
+    private TaskCommentResponse createCommentResponse() {
+
+        TaskCommentResponse response =
+                new TaskCommentResponse();
+
+        response.setId(
+                COMMENT_ID
+        );
+
+        response.setTaskId(
+                TASK_ID
+        );
+
+        response.setUserId(
+                5L
+        );
+
+        response.setAuthorName(
+                "Test User"
+        );
+
+        response.setAuthorEmail(
+                EMAIL
+        );
+
+        response.setCommentText(
+                "Backend work is complete."
+        );
+
+        response.setCreatedAt(
+                LocalDateTime.of(
+                        2026,
+                        8,
+                        31,
+                        10,
+                        0
+                )
+        );
+
+        response.setUpdatedAt(
+                null
+        );
+
+        return response;
     }
 }

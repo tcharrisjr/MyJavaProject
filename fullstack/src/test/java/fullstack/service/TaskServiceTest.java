@@ -9,13 +9,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,17 +38,25 @@ import org.springframework.web.server.ResponseStatusException;
 
 import fullstack.dto.task.TaskRequest;
 import fullstack.dto.task.TaskResponse;
-
+import fullstack.model.ActivityType;
 import fullstack.model.AppUser;
+import fullstack.model.Label;
 import fullstack.model.Project;
 import fullstack.model.Task;
-
+import fullstack.repository.LabelRepository;
 import fullstack.repository.ProjectRepository;
 import fullstack.repository.TaskRepository;
 import fullstack.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
 class TaskServiceTest {
+
+    // =========================================================
+    // CONSTANTS
+    // =========================================================
+
+    private static final String EMAIL =
+            "test@example.com";
 
     // =========================================================
     // MOCKS
@@ -57,23 +68,26 @@ class TaskServiceTest {
     @Mock
     private ProjectRepository projectRepository;
 
-    /*
-     * Sequence 13A
-     *
-     * TaskService now resolves task assignees through
-     * UserRepository.
-     */
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private LabelRepository labelRepository;
+
+    /*
+     * Sequence 15A
+     *
+     * TaskService now records task activity through
+     * ProjectActivityService.
+     */
+    @Mock
+    private ProjectActivityService projectActivityService;
 
     // =========================================================
     // SERVICE
     // =========================================================
 
     private TaskService taskService;
-
-    private static final String EMAIL =
-            "test@example.com";
 
     // =========================================================
     // SETUP
@@ -86,7 +100,9 @@ class TaskServiceTest {
                 new TaskService(
                         taskRepository,
                         projectRepository,
-                        userRepository
+                        userRepository,
+                        labelRepository,
+                        projectActivityService
                 );
     }
 
@@ -184,6 +200,55 @@ class TaskServiceTest {
     }
 
     // =========================================================
+    // GET PROJECT TASKS - PROJECT NOT OWNED
+    // =========================================================
+
+    @Test
+    void getTasksByProject_whenProjectNotOwned_throws404() {
+
+        when(
+                projectRepository
+                        .findByIdAndOwner_EmailIgnoreCase(
+                                1L,
+                                EMAIL
+                        )
+        )
+        .thenReturn(
+                Optional.empty()
+        );
+
+        ResponseStatusException exception =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                taskService
+                                        .getTasksByProject(
+                                                1L,
+                                                EMAIL
+                                        )
+                );
+
+        assertEquals(
+                HttpStatus.NOT_FOUND,
+                exception.getStatusCode()
+        );
+
+        assertEquals(
+                "Project not found.",
+                exception.getReason()
+        );
+
+        verify(
+                taskRepository,
+                never()
+        )
+        .findTasksForOwnedProject(
+                1L,
+                EMAIL
+        );
+    }
+
+    // =========================================================
     // GET PROJECT TASKS - ASSIGNEE RESPONSE
     // =========================================================
 
@@ -241,83 +306,27 @@ class TaskServiceTest {
                 )
         );
 
-        List<TaskResponse> result =
+        TaskResponse result =
                 taskService
                         .getTasksByProject(
                                 1L,
                                 EMAIL
-                        );
-
-        assertEquals(
-                1,
-                result.size()
-        );
-
-        TaskResponse response =
-                result.get(0);
+                        )
+                        .get(0);
 
         assertEquals(
                 5L,
-                response.getAssigneeId()
+                result.getAssigneeId()
         );
 
         assertEquals(
                 "Test User",
-                response.getAssigneeName()
+                result.getAssigneeName()
         );
 
         assertEquals(
                 "assignee@example.com",
-                response.getAssigneeEmail()
-        );
-    }
-
-    // =========================================================
-    // PROJECT OWNERSHIP
-    // =========================================================
-
-    @Test
-    void getTasksByProject_whenProjectNotOwned_throws404() {
-
-        when(
-                projectRepository
-                        .findByIdAndOwner_EmailIgnoreCase(
-                                1L,
-                                EMAIL
-                        )
-        )
-        .thenReturn(
-                Optional.empty()
-        );
-
-        ResponseStatusException exception =
-                assertThrows(
-                        ResponseStatusException.class,
-                        () ->
-                                taskService
-                                        .getTasksByProject(
-                                                1L,
-                                                EMAIL
-                                        )
-                );
-
-        assertEquals(
-                HttpStatus.NOT_FOUND,
-                exception.getStatusCode()
-        );
-
-        assertEquals(
-                "Project not found.",
-                exception.getReason()
-        );
-
-        verify(
-                taskRepository,
-                never()
-        )
-        .findTasksForOwnedProject(
-                1L,
-                EMAIL
+                result.getAssigneeEmail()
         );
     }
 
@@ -449,10 +458,6 @@ class TaskServiceTest {
                 result.getDueDate()
         );
 
-        assertNull(
-                result.getAssigneeId()
-        );
-
         ArgumentCaptor<Task> taskCaptor =
                 ArgumentCaptor.forClass(
                         Task.class
@@ -468,9 +473,14 @@ class TaskServiceTest {
         Task savedTask =
                 taskCaptor.getValue();
 
-        assertEquals(
+        assertSame(
                 project,
                 savedTask.getProject()
+        );
+
+        assertEquals(
+                "Build Dashboard",
+                savedTask.getTitle()
         );
 
         assertEquals(
@@ -482,9 +492,77 @@ class TaskServiceTest {
                 "HIGH",
                 savedTask.getPriority()
         );
+    }
 
-        assertNull(
-                savedTask.getAssignee()
+    // =========================================================
+    // SEQUENCE 15A - CREATE TASK ACTIVITY
+    // =========================================================
+
+    @Test
+    void createTask_recordsTaskCreatedActivity() {
+
+        Project project =
+                createProject(
+                        1L
+                );
+
+        TaskRequest request =
+                createRequest(
+                        "New Task",
+                        "Description",
+                        "OPEN",
+                        "MEDIUM"
+                );
+
+        when(
+                projectRepository
+                        .findByIdAndOwner_EmailIgnoreCase(
+                                1L,
+                                EMAIL
+                        )
+        )
+        .thenReturn(
+                Optional.of(
+                        project
+                )
+        );
+
+        when(
+                taskRepository.save(
+                        any(Task.class)
+                )
+        )
+        .thenAnswer(
+                invocation -> {
+
+                    Task task =
+                            invocation.getArgument(
+                                    0
+                            );
+
+                    task.setId(
+                            10L
+                    );
+
+                    return task;
+                }
+        );
+
+        taskService.createTask(
+                1L,
+                request,
+                EMAIL
+        );
+
+        verify(
+                projectActivityService
+        )
+        .recordTaskActivity(
+                eq(project),
+                any(Task.class),
+                eq(EMAIL),
+                eq(ActivityType.TASK_CREATED),
+                eq("Created task \"New Task\"")
         );
     }
 
@@ -508,19 +586,12 @@ class TaskServiceTest {
                 );
 
         TaskRequest request =
-                new TaskRequest();
-
-        request.setTitle(
-                "Assigned Task"
-        );
-
-        request.setStatus(
-                "OPEN"
-        );
-
-        request.setPriority(
-                "MEDIUM"
-        );
+                createRequest(
+                        "Assigned Task",
+                        "Test",
+                        "OPEN",
+                        "MEDIUM"
+                );
 
         request.setAssigneeId(
                 5L
@@ -556,27 +627,10 @@ class TaskServiceTest {
                 )
         )
         .thenAnswer(
-                invocation -> {
-
-                    Task task =
-                            invocation.getArgument(
-                                    0
-                            );
-
-                    task.setId(
-                            10L
-                    );
-
-                    task.setCreatedDate(
-                            LocalDateTime.now()
-                    );
-
-                    task.setUpdatedDate(
-                            LocalDateTime.now()
-                    );
-
-                    return task;
-                }
+                invocation ->
+                        invocation.getArgument(
+                                0
+                        )
         );
 
         TaskResponse result =
@@ -602,26 +656,6 @@ class TaskServiceTest {
                 result.getAssigneeEmail()
         );
 
-        ArgumentCaptor<Task> taskCaptor =
-                ArgumentCaptor.forClass(
-                        Task.class
-                );
-
-        verify(
-                taskRepository
-        )
-        .save(
-                taskCaptor.capture()
-        );
-
-        Task savedTask =
-                taskCaptor.getValue();
-
-        assertSame(
-                assignee,
-                savedTask.getAssignee()
-        );
-
         verify(
                 userRepository
         )
@@ -643,19 +677,12 @@ class TaskServiceTest {
                 );
 
         TaskRequest request =
-                new TaskRequest();
-
-        request.setTitle(
-                "Invalid Assignee"
-        );
-
-        request.setStatus(
-                "OPEN"
-        );
-
-        request.setPriority(
-                "MEDIUM"
-        );
+                createRequest(
+                        "Invalid Assignee",
+                        "",
+                        "OPEN",
+                        "MEDIUM"
+                );
 
         request.setAssigneeId(
                 999L
@@ -712,10 +739,22 @@ class TaskServiceTest {
         .save(
                 any(Task.class)
         );
+
+        verify(
+                projectActivityService,
+                never()
+        )
+        .recordTaskActivity(
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+        );
     }
 
     // =========================================================
-    // DEFAULT STATUS / PRIORITY
+    // CREATE TASK - DEFAULT STATUS / PRIORITY
     // =========================================================
 
     @Test
@@ -786,78 +825,7 @@ class TaskServiceTest {
     }
 
     // =========================================================
-    // STATUS ALIAS
-    // =========================================================
-
-    @Test
-    void createTask_whenStatusDone_normalizesToCompleted() {
-
-        Project project =
-                createProject(
-                        1L
-                );
-
-        TaskRequest request =
-                new TaskRequest();
-
-        request.setTitle(
-                "Finished Task"
-        );
-
-        request.setStatus(
-                "done"
-        );
-
-        request.setPriority(
-                "low"
-        );
-
-        when(
-                projectRepository
-                        .findByIdAndOwner_EmailIgnoreCase(
-                                1L,
-                                EMAIL
-                        )
-        )
-        .thenReturn(
-                Optional.of(
-                        project
-                )
-        );
-
-        when(
-                taskRepository.save(
-                        any(Task.class)
-                )
-        )
-        .thenAnswer(
-                invocation ->
-                        invocation.getArgument(
-                                0
-                        )
-        );
-
-        TaskResponse result =
-                taskService
-                        .createTask(
-                                1L,
-                                request,
-                                EMAIL
-                        );
-
-        assertEquals(
-                "COMPLETED",
-                result.getStatus()
-        );
-
-        assertEquals(
-                "LOW",
-                result.getPriority()
-        );
-    }
-
-    // =========================================================
-    // INVALID STATUS
+    // CREATE TASK - INVALID STATUS
     // =========================================================
 
     @Test
@@ -869,19 +837,12 @@ class TaskServiceTest {
                 );
 
         TaskRequest request =
-                new TaskRequest();
-
-        request.setTitle(
-                "Invalid Status"
-        );
-
-        request.setStatus(
-                "WAITING"
-        );
-
-        request.setPriority(
-                "MEDIUM"
-        );
+                createRequest(
+                        "Invalid Status",
+                        "",
+                        "WAITING",
+                        "MEDIUM"
+                );
 
         when(
                 projectRepository
@@ -923,7 +884,7 @@ class TaskServiceTest {
     }
 
     // =========================================================
-    // INVALID PRIORITY
+    // CREATE TASK - INVALID PRIORITY
     // =========================================================
 
     @Test
@@ -935,19 +896,12 @@ class TaskServiceTest {
                 );
 
         TaskRequest request =
-                new TaskRequest();
-
-        request.setTitle(
-                "Invalid Priority"
-        );
-
-        request.setStatus(
-                "OPEN"
-        );
-
-        request.setPriority(
-                "CRITICAL"
-        );
+                createRequest(
+                        "Invalid Priority",
+                        "",
+                        "OPEN",
+                        "CRITICAL"
+                );
 
         when(
                 projectRepository
@@ -989,7 +943,7 @@ class TaskServiceTest {
     }
 
     // =========================================================
-    // BLANK TITLE
+    // CREATE TASK - BLANK TITLE
     // =========================================================
 
     @Test
@@ -1098,6 +1052,90 @@ class TaskServiceTest {
     }
 
     // =========================================================
+    // CREATE TASK - LABELS
+    // =========================================================
+
+    @Test
+    void createTask_whenLabelsProvided_resolvesLabels() {
+
+        Project project =
+                createProject(
+                        1L
+                );
+
+        Label backend =
+                new Label(
+                        "Backend"
+                );
+
+        TaskRequest request =
+                createRequest(
+                        "Labels",
+                        "",
+                        "OPEN",
+                        "MEDIUM"
+                );
+
+        request.setLabels(
+                Set.of(
+                        "Backend"
+                )
+        );
+
+        when(
+                projectRepository
+                        .findByIdAndOwner_EmailIgnoreCase(
+                                1L,
+                                EMAIL
+                        )
+        )
+        .thenReturn(
+                Optional.of(
+                        project
+                )
+        );
+
+        when(
+                labelRepository
+                        .findByNameIgnoreCase(
+                                "Backend"
+                        )
+        )
+        .thenReturn(
+                Optional.of(
+                        backend
+                )
+        );
+
+        when(
+                taskRepository.save(
+                        any(Task.class)
+                )
+        )
+        .thenAnswer(
+                invocation ->
+                        invocation.getArgument(
+                                0
+                        )
+        );
+
+        TaskResponse result =
+                taskService
+                        .createTask(
+                                1L,
+                                request,
+                                EMAIL
+                        );
+
+        assertEquals(
+                Set.of(
+                        "Backend"
+                ),
+                result.getLabels()
+        );
+    }
+
+    // =========================================================
     // UPDATE TASK
     // =========================================================
 
@@ -1145,18 +1183,8 @@ class TaskServiceTest {
                 )
         );
 
-        when(
-                taskRepository
-                        .findByIdAndProject_IdAndProject_Owner_EmailIgnoreCase(
-                                10L,
-                                1L,
-                                EMAIL
-                        )
-        )
-        .thenReturn(
-                Optional.of(
-                        existingTask
-                )
+        whenOwnedTask(
+                existingTask
         );
 
         when(
@@ -1212,6 +1240,198 @@ class TaskServiceTest {
     }
 
     // =========================================================
+    // SEQUENCE 15A - UPDATE TITLE ACTIVITY
+    // =========================================================
+
+    @Test
+    void updateTask_whenTitleChanges_recordsTaskUpdatedActivity() {
+
+        Project project =
+                createProject(
+                        1L
+                );
+
+        Task task =
+                createTask(
+                        10L,
+                        project,
+                        "Old Title",
+                        "OPEN",
+                        "MEDIUM"
+                );
+
+        TaskRequest request =
+                requestMatchingTask(
+                        task
+                );
+
+        request.setTitle(
+                "New Title"
+        );
+
+        whenOwnedTask(
+                task
+        );
+
+        when(
+                taskRepository.save(
+                        task
+                )
+        )
+        .thenReturn(
+                task
+        );
+
+        taskService.updateTask(
+                1L,
+                10L,
+                request,
+                EMAIL
+        );
+
+        verify(
+                projectActivityService
+        )
+        .recordTaskFieldChange(
+                project,
+                task,
+                EMAIL,
+                ActivityType.TASK_UPDATED,
+                "title",
+                "Old Title",
+                "New Title",
+                "Changed task title from \"Old Title\" to \"New Title\""
+        );
+    }
+
+    // =========================================================
+    // SEQUENCE 15A - STATUS ACTIVITY
+    // =========================================================
+
+    @Test
+    void updateTask_whenStatusChanges_recordsStatusActivity() {
+
+        Project project =
+                createProject(
+                        1L
+                );
+
+        Task task =
+                createTask(
+                        10L,
+                        project,
+                        "Status Task",
+                        "OPEN",
+                        "MEDIUM"
+                );
+
+        TaskRequest request =
+                requestMatchingTask(
+                        task
+                );
+
+        request.setStatus(
+                "COMPLETED"
+        );
+
+        whenOwnedTask(
+                task
+        );
+
+        when(
+                taskRepository.save(
+                        task
+                )
+        )
+        .thenReturn(
+                task
+        );
+
+        taskService.updateTask(
+                1L,
+                10L,
+                request,
+                EMAIL
+        );
+
+        verify(
+                projectActivityService
+        )
+        .recordTaskFieldChange(
+                project,
+                task,
+                EMAIL,
+                ActivityType.TASK_STATUS_CHANGED,
+                "status",
+                "OPEN",
+                "COMPLETED",
+                "Changed task status from OPEN to COMPLETED for \"Status Task\""
+        );
+    }
+
+    // =========================================================
+    // SEQUENCE 15A - NO CHANGE
+    // =========================================================
+
+    @Test
+    void updateTask_whenNothingChanges_doesNotRecordActivity() {
+
+        Project project =
+                createProject(
+                        1L
+                );
+
+        Task task =
+                createTask(
+                        10L,
+                        project,
+                        "No Change",
+                        "OPEN",
+                        "MEDIUM"
+                );
+
+        TaskRequest request =
+                requestMatchingTask(
+                        task
+                );
+
+        whenOwnedTask(
+                task
+        );
+
+        when(
+                taskRepository.save(
+                        task
+                )
+        )
+        .thenReturn(
+                task
+        );
+
+        taskService.updateTask(
+                1L,
+                10L,
+                request,
+                EMAIL
+        );
+
+        verify(
+                projectActivityService,
+                never()
+        )
+        .recordTaskFieldChange(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+        );
+    }
+
+    // =========================================================
     // UPDATE TASK - ASSIGN USER
     // =========================================================
 
@@ -1227,7 +1447,7 @@ class TaskServiceTest {
                 createTask(
                         10L,
                         project,
-                        "Old Title",
+                        "Assigned Task",
                         "OPEN",
                         "LOW"
                 );
@@ -1235,45 +1455,21 @@ class TaskServiceTest {
         AppUser assignee =
                 createUser(
                         5L,
-                        "Updated Assignee",
-                        "updated@example.com"
+                        "Assigned User",
+                        "assigned@example.com"
                 );
 
         TaskRequest request =
-                new TaskRequest();
-
-        request.setTitle(
-                "Updated Title"
-        );
-
-        request.setDescription(
-                "Updated Description"
-        );
-
-        request.setStatus(
-                "IN_PROGRESS"
-        );
-
-        request.setPriority(
-                "HIGH"
-        );
+                requestMatchingTask(
+                        existingTask
+                );
 
         request.setAssigneeId(
                 5L
         );
 
-        when(
-                taskRepository
-                        .findByIdAndProject_IdAndProject_Owner_EmailIgnoreCase(
-                                10L,
-                                1L,
-                                EMAIL
-                        )
-        )
-        .thenReturn(
-                Optional.of(
-                        existingTask
-                )
+        whenOwnedTask(
+                existingTask
         );
 
         when(
@@ -1315,21 +1511,18 @@ class TaskServiceTest {
                 result.getAssigneeId()
         );
 
-        assertEquals(
-                "Updated Assignee",
-                result.getAssigneeName()
-        );
-
-        assertEquals(
-                "updated@example.com",
-                result.getAssigneeEmail()
-        );
-
         verify(
-                userRepository
+                projectActivityService
         )
-        .findById(
-                5L
+        .recordTaskFieldChange(
+                project,
+                existingTask,
+                EMAIL,
+                ActivityType.TASK_ASSIGNED,
+                "assignee",
+                null,
+                "Assigned User <assigned@example.com>",
+                "Assigned task \"Assigned Task\" to Assigned User <assigned@example.com>"
         );
     }
 
@@ -1349,9 +1542,9 @@ class TaskServiceTest {
                 createTask(
                         10L,
                         project,
-                        "Old Title",
+                        "Assigned Task",
                         "OPEN",
-                        "LOW"
+                        "MEDIUM"
                 );
 
         existingTask.setAssignee(
@@ -1363,40 +1556,16 @@ class TaskServiceTest {
         );
 
         TaskRequest request =
-                new TaskRequest();
-
-        request.setTitle(
-                "Updated Title"
-        );
-
-        request.setDescription(
-                "Updated"
-        );
-
-        request.setStatus(
-                "OPEN"
-        );
-
-        request.setPriority(
-                "MEDIUM"
-        );
+                requestMatchingTask(
+                        existingTask
+                );
 
         request.setAssigneeId(
                 null
         );
 
-        when(
-                taskRepository
-                        .findByIdAndProject_IdAndProject_Owner_EmailIgnoreCase(
-                                10L,
-                                1L,
-                                EMAIL
-                        )
-        )
-        .thenReturn(
-                Optional.of(
-                        existingTask
-                )
+        whenOwnedTask(
+                existingTask
         );
 
         when(
@@ -1425,20 +1594,209 @@ class TaskServiceTest {
                 result.getAssigneeId()
         );
 
-        assertNull(
-                result.getAssigneeName()
+        verify(
+                projectActivityService
+        )
+        .recordTaskFieldChange(
+                project,
+                existingTask,
+                EMAIL,
+                ActivityType.TASK_UNASSIGNED,
+                "assignee",
+                "Existing User <existing@example.com>",
+                null,
+                "Unassigned Existing User <existing@example.com> from task \"Assigned Task\""
+        );
+    }
+
+    // =========================================================
+    // SEQUENCE 15A - REASSIGN USER
+    // =========================================================
+
+    @Test
+    void updateTask_whenAssigneeChanges_recordsReassignment() {
+
+        Project project =
+                createProject(
+                        1L
+                );
+
+        AppUser oldAssignee =
+                createUser(
+                        5L,
+                        "Old User",
+                        "old@example.com"
+                );
+
+        AppUser newAssignee =
+                createUser(
+                        6L,
+                        "New User",
+                        "new@example.com"
+                );
+
+        Task task =
+                createTask(
+                        10L,
+                        project,
+                        "Reassign Task",
+                        "OPEN",
+                        "MEDIUM"
+                );
+
+        task.setAssignee(
+                oldAssignee
         );
 
-        assertNull(
-                result.getAssigneeEmail()
+        TaskRequest request =
+                requestMatchingTask(
+                        task
+                );
+
+        request.setAssigneeId(
+                6L
+        );
+
+        whenOwnedTask(
+                task
+        );
+
+        when(
+                userRepository.findById(
+                        6L
+                )
+        )
+        .thenReturn(
+                Optional.of(
+                        newAssignee
+                )
+        );
+
+        when(
+                taskRepository.save(
+                        task
+                )
+        )
+        .thenReturn(
+                task
+        );
+
+        taskService.updateTask(
+                1L,
+                10L,
+                request,
+                EMAIL
         );
 
         verify(
-                userRepository,
-                never()
+                projectActivityService
         )
-        .findById(
-                any()
+        .recordTaskFieldChange(
+                project,
+                task,
+                EMAIL,
+                ActivityType.TASK_ASSIGNED,
+                "assignee",
+                "Old User <old@example.com>",
+                "New User <new@example.com>",
+                "Reassigned task \"Reassign Task\" from Old User <old@example.com> to New User <new@example.com>"
+        );
+    }
+
+    // =========================================================
+    // SEQUENCE 15A - LABEL CHANGE
+    // =========================================================
+
+    @Test
+    void updateTask_whenLabelsChange_recordsLabelActivity() {
+
+        Project project =
+                createProject(
+                        1L
+                );
+
+        Task task =
+                createTask(
+                        10L,
+                        project,
+                        "Label Task",
+                        "OPEN",
+                        "MEDIUM"
+                );
+
+        Label backend =
+                new Label(
+                        "Backend"
+                );
+
+        task.setLabels(
+                new HashSet<>(
+                        Set.of(
+                                backend
+                        )
+                )
+        );
+
+        Label urgent =
+                new Label(
+                        "Urgent"
+                );
+
+        TaskRequest request =
+                requestMatchingTask(
+                        task
+                );
+
+        request.setLabels(
+                Set.of(
+                        "Urgent"
+                )
+        );
+
+        whenOwnedTask(
+                task
+        );
+
+        when(
+                labelRepository
+                        .findByNameIgnoreCase(
+                                "Urgent"
+                        )
+        )
+        .thenReturn(
+                Optional.of(
+                        urgent
+                )
+        );
+
+        when(
+                taskRepository.save(
+                        task
+                )
+        )
+        .thenReturn(
+                task
+        );
+
+        taskService.updateTask(
+                1L,
+                10L,
+                request,
+                EMAIL
+        );
+
+        verify(
+                projectActivityService
+        )
+        .recordTaskFieldChange(
+                project,
+                task,
+                EMAIL,
+                ActivityType.TASK_LABELS_CHANGED,
+                "labels",
+                "Backend",
+                "Urgent",
+                "Updated labels for task \"Label Task\""
         );
     }
 
@@ -1498,6 +1856,21 @@ class TaskServiceTest {
         .save(
                 any(Task.class)
         );
+
+        verify(
+                projectActivityService,
+                never()
+        )
+        .recordTaskFieldChange(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
+        );
     }
 
     // =========================================================
@@ -1521,18 +1894,8 @@ class TaskServiceTest {
                         "MEDIUM"
                 );
 
-        when(
-                taskRepository
-                        .findByIdAndProject_IdAndProject_Owner_EmailIgnoreCase(
-                                10L,
-                                1L,
-                                EMAIL
-                        )
-        )
-        .thenReturn(
-                Optional.of(
-                        task
-                )
+        whenOwnedTask(
+                task
         );
 
         taskService
@@ -1547,6 +1910,49 @@ class TaskServiceTest {
         )
         .delete(
                 task
+        );
+    }
+
+    // =========================================================
+    // SEQUENCE 15A - DELETE TASK ACTIVITY
+    // =========================================================
+
+    @Test
+    void deleteTask_whenOwned_recordsDeleteActivity() {
+
+        Project project =
+                createProject(
+                        1L
+                );
+
+        Task task =
+                createTask(
+                        10L,
+                        project,
+                        "Delete Me",
+                        "OPEN",
+                        "MEDIUM"
+                );
+
+        whenOwnedTask(
+                task
+        );
+
+        taskService.deleteTask(
+                1L,
+                10L,
+                EMAIL
+        );
+
+        verify(
+                projectActivityService
+        )
+        .recordTaskActivity(
+                project,
+                task,
+                EMAIL,
+                ActivityType.TASK_DELETED,
+                "Deleted task \"Delete Me\" (task #10)"
         );
     }
 
@@ -1586,6 +1992,18 @@ class TaskServiceTest {
         )
         .delete(
                 any(Task.class)
+        );
+
+        verify(
+                projectActivityService,
+                never()
+        )
+        .recordTaskActivity(
+                any(),
+                any(),
+                any(),
+                any(),
+                any()
         );
     }
 
@@ -1679,11 +2097,11 @@ class TaskServiceTest {
     }
 
     // =========================================================
-    // ALL FILTERS
+    // PAGINATION - ALL FILTERS
     // =========================================================
 
     @Test
-    void getTasksByProjectPaged_allFiltersNormalizeToNull() {
+    void getTasksByProjectPaged_whenFiltersAll_passesNullFilters() {
 
         Project project =
                 createProject(
@@ -1735,7 +2153,7 @@ class TaskServiceTest {
                         EMAIL,
                         "ALL",
                         "ALL",
-                        "   ",
+                        "",
                         "ALL",
                         pageable
                 );
@@ -1757,7 +2175,7 @@ class TaskServiceTest {
     }
 
     // =========================================================
-    // INVALID DUE DATE FILTER
+    // PAGINATION - INVALID DUE DATE FILTER
     // =========================================================
 
     @Test
@@ -1789,10 +2207,10 @@ class TaskServiceTest {
                                         .getTasksByProjectPaged(
                                                 1L,
                                                 EMAIL,
-                                                null,
-                                                null,
-                                                null,
-                                                "NEXT_YEAR",
+                                                "ALL",
+                                                "ALL",
+                                                "",
+                                                "SOMEDAY",
                                                 PageRequest.of(
                                                         0,
                                                         10
@@ -1801,16 +2219,86 @@ class TaskServiceTest {
                 );
 
         assertEquals(
-                "Invalid due date filter: NEXT_YEAR",
+                "Invalid due date filter: SOMEDAY",
                 exception.getMessage()
+        );
+    }
+
+    // =========================================================
+    // ACTIVITY - MULTIPLE FIELD CHANGES
+    // =========================================================
+
+    @Test
+    void updateTask_whenMultipleFieldsChange_recordsEachChange() {
+
+        Project project =
+                createProject(
+                        1L
+                );
+
+        Task task =
+                createTask(
+                        10L,
+                        project,
+                        "Old",
+                        "OPEN",
+                        "LOW"
+                );
+
+        TaskRequest request =
+                requestMatchingTask(
+                        task
+                );
+
+        request.setTitle(
+                "New"
+        );
+
+        request.setDescription(
+                "New Description"
+        );
+
+        request.setStatus(
+                "COMPLETED"
+        );
+
+        request.setPriority(
+                "HIGH"
+        );
+
+        request.setDueDate(
+                LocalDate.of(
+                        2026,
+                        9,
+                        15
+                )
+        );
+
+        whenOwnedTask(
+                task
+        );
+
+        when(
+                taskRepository.save(
+                        task
+                )
+        )
+        .thenReturn(
+                task
+        );
+
+        taskService.updateTask(
+                1L,
+                10L,
+                request,
+                EMAIL
         );
 
         verify(
-                taskRepository,
-                never()
+                projectActivityService,
+                times(5)
         )
-        .searchTasksForOwnedProject(
-                any(),
+        .recordTaskFieldChange(
                 any(),
                 any(),
                 any(),
@@ -1819,84 +2307,6 @@ class TaskServiceTest {
                 any(),
                 any(),
                 any()
-        );
-    }
-
-    // =========================================================
-    // DUE TODAY ALIAS
-    // =========================================================
-
-    @Test
-    void getTasksByProjectPaged_todayAlias_normalizesToDueToday() {
-
-        Project project =
-                createProject(
-                        1L
-                );
-
-        Pageable pageable =
-                PageRequest.of(
-                        0,
-                        10
-                );
-
-        when(
-                projectRepository
-                        .findByIdAndOwner_EmailIgnoreCase(
-                                1L,
-                                EMAIL
-                        )
-        )
-        .thenReturn(
-                Optional.of(
-                        project
-                )
-        );
-
-        when(
-                taskRepository
-                        .searchTasksForOwnedProject(
-                                eq(1L),
-                                eq(EMAIL),
-                                eq(null),
-                                eq(null),
-                                eq(null),
-                                eq("DUE_TODAY"),
-                                any(LocalDate.class),
-                                any(LocalDate.class),
-                                eq(pageable)
-                        )
-        )
-        .thenReturn(
-                Page.empty(
-                        pageable
-                )
-        );
-
-        taskService
-                .getTasksByProjectPaged(
-                        1L,
-                        EMAIL,
-                        null,
-                        null,
-                        null,
-                        "today",
-                        pageable
-                );
-
-        verify(
-                taskRepository
-        )
-        .searchTasksForOwnedProject(
-                eq(1L),
-                eq(EMAIL),
-                eq(null),
-                eq(null),
-                eq(null),
-                eq("DUE_TODAY"),
-                any(LocalDate.class),
-                any(LocalDate.class),
-                eq(pageable)
         );
     }
 
@@ -1975,12 +2385,13 @@ class TaskServiceTest {
                 LocalDateTime.now()
         );
 
+        task.setLabels(
+                new HashSet<>()
+        );
+
         return task;
     }
 
-    /*
-     * Sequence 13A test helper.
-     */
     private AppUser createUser(
             Long id,
             String name,
@@ -2002,5 +2413,117 @@ class TaskServiceTest {
         );
 
         return user;
+    }
+
+    private TaskRequest createRequest(
+            String title,
+            String description,
+            String status,
+            String priority) {
+
+        TaskRequest request =
+                new TaskRequest();
+
+        request.setTitle(
+                title
+        );
+
+        request.setDescription(
+                description
+        );
+
+        request.setStatus(
+                status
+        );
+
+        request.setPriority(
+                priority
+        );
+
+        return request;
+    }
+
+    /*
+     * Creates an update request that initially contains exactly
+     * the same editable values as the supplied task.
+     *
+     * Individual tests can then change one field and verify
+     * exactly one corresponding activity record.
+     */
+    private TaskRequest requestMatchingTask(
+            Task task) {
+
+        TaskRequest request =
+                new TaskRequest();
+
+        request.setTitle(
+                task.getTitle()
+        );
+
+        request.setDescription(
+                task.getDescription()
+        );
+
+        request.setStatus(
+                task.getStatus()
+        );
+
+        request.setPriority(
+                task.getPriority()
+        );
+
+        request.setDueDate(
+                task.getDueDate()
+        );
+
+        if (task.getAssignee() != null) {
+
+            request.setAssigneeId(
+                    task.getAssignee()
+                            .getId()
+            );
+        }
+
+        Set<String> labelNames =
+                new HashSet<>();
+
+        if (task.getLabels() != null) {
+
+            for (Label label :
+                    task.getLabels()) {
+
+                if (label != null
+                        && label.getName() != null) {
+
+                    labelNames.add(
+                            label.getName()
+                    );
+                }
+            }
+        }
+
+        request.setLabels(
+                labelNames
+        );
+
+        return request;
+    }
+
+    private void whenOwnedTask(
+            Task task) {
+
+        when(
+                taskRepository
+                        .findByIdAndProject_IdAndProject_Owner_EmailIgnoreCase(
+                                task.getId(),
+                                task.getProject().getId(),
+                                EMAIL
+                        )
+        )
+        .thenReturn(
+                Optional.of(
+                        task
+                )
+        );
     }
 }

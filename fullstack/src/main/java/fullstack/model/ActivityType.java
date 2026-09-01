@@ -1,0 +1,23 @@
+package fullstack.model;
+
+public enum ActivityType {
+
+    PROJECT_CREATED,
+    PROJECT_UPDATED,
+    PROJECT_DELETED,
+
+    TASK_CREATED,
+    TASK_UPDATED,
+    TASK_DELETED,
+
+    TASK_STATUS_CHANGED,
+
+    TASK_ASSIGNED,
+    TASK_UNASSIGNED,
+
+    TASK_LABELS_CHANGED,
+
+    COMMENT_ADDED,
+    COMMENT_UPDATED,
+    COMMENT_DELETED
+}

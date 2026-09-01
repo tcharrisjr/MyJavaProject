@@ -1,8 +1,12 @@
 package fullstack.service;
 
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,9 +17,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 import fullstack.dto.task.TaskRequest;
 import fullstack.dto.task.TaskResponse;
+import fullstack.model.ActivityType;
 import fullstack.model.AppUser;
+import fullstack.model.Label;
 import fullstack.model.Project;
 import fullstack.model.Task;
+import fullstack.repository.LabelRepository;
 import fullstack.repository.ProjectRepository;
 import fullstack.repository.TaskRepository;
 import fullstack.repository.UserRepository;
@@ -30,6 +37,17 @@ public class TaskService {
 
     private final UserRepository userRepository;
 
+    private final LabelRepository labelRepository;
+
+    /*
+     * Sequence 15A
+     *
+     * Central service used to create project activity /
+     * audit-history records.
+     */
+    private final ProjectActivityService
+            projectActivityService;
+
     // =========================================================
     // CONSTRUCTOR
     // =========================================================
@@ -37,7 +55,9 @@ public class TaskService {
     public TaskService(
             TaskRepository taskRepository,
             ProjectRepository projectRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            LabelRepository labelRepository,
+            ProjectActivityService projectActivityService) {
 
         this.taskRepository =
                 taskRepository;
@@ -47,6 +67,12 @@ public class TaskService {
 
         this.userRepository =
                 userRepository;
+
+        this.labelRepository =
+                labelRepository;
+
+        this.projectActivityService =
+                projectActivityService;
     }
 
     // =========================================================
@@ -211,9 +237,35 @@ public class TaskService {
                 )
         );
 
+        /*
+         * Sequence 13B - Labels
+         */
+        task.setLabels(
+                resolveLabels(
+                        request.getLabels()
+                )
+        );
+
         Task savedTask =
                 taskRepository.save(
                         task
+                );
+
+        /*
+         * Sequence 15A - Task Activity
+         *
+         * A newly created task produces one TASK_CREATED
+         * activity event.
+         */
+        projectActivityService
+                .recordTaskActivity(
+                        project,
+                        savedTask,
+                        email,
+                        ActivityType.TASK_CREATED,
+                        "Created task \""
+                                + savedTask.getTitle()
+                                + "\""
                 );
 
         return toResponse(
@@ -238,49 +290,303 @@ public class TaskService {
                         email
                 );
 
-        existingTask.setTitle(
+        /*
+         * =====================================================
+         * SEQUENCE 15A
+         * CAPTURE ORIGINAL VALUES
+         * =====================================================
+         *
+         * These values must be captured BEFORE the Task entity
+         * is modified.
+         */
+
+        String oldTitle =
+                existingTask.getTitle();
+
+        String oldDescription =
+                existingTask.getDescription();
+
+        String oldStatus =
+                existingTask.getStatus();
+
+        String oldPriority =
+                existingTask.getPriority();
+
+        LocalDate oldDueDate =
+                existingTask.getDueDate();
+
+        AppUser oldAssignee =
+                existingTask.getAssignee();
+
+        String oldLabels =
+                labelNames(
+                        existingTask.getLabels()
+                );
+
+        /*
+         * Normalize / resolve the incoming values once.
+         *
+         * This gives us both:
+         *
+         * 1. values to place onto the Task
+         * 2. values to compare against the original snapshot
+         */
+
+        String newTitle =
                 normalizeTitle(
                         request.getTitle()
-                )
+                );
+
+        String newDescription =
+                normalizeDescription(
+                        request.getDescription()
+                );
+
+        String newStatus =
+                normalizeStatus(
+                        request.getStatus()
+                );
+
+        String newPriority =
+                normalizePriority(
+                        request.getPriority()
+                );
+
+        LocalDate newDueDate =
+                request.getDueDate();
+
+        AppUser newAssignee =
+                resolveAssignee(
+                        request.getAssigneeId()
+                );
+
+        Set<Label> newLabels =
+                resolveLabels(
+                        request.getLabels()
+                );
+
+        String newLabelNames =
+                labelNames(
+                        newLabels
+                );
+
+        /*
+         * Apply the normalized values.
+         */
+
+        existingTask.setTitle(
+                newTitle
         );
 
         existingTask.setDescription(
-                normalizeDescription(
-                        request.getDescription()
-                )
+                newDescription
         );
 
         existingTask.setStatus(
-                normalizeStatus(
-                        request.getStatus()
-                )
+                newStatus
         );
 
         existingTask.setPriority(
-                normalizePriority(
-                        request.getPriority()
-                )
+                newPriority
         );
 
         existingTask.setDueDate(
-                request.getDueDate()
+                newDueDate
         );
 
-        /*
-         * Sequence 13A
-         *
-         * null assigneeId deliberately unassigns the task.
-         */
         existingTask.setAssignee(
-                resolveAssignee(
-                        request.getAssigneeId()
-                )
+                newAssignee
+        );
+
+        existingTask.setLabels(
+                newLabels
         );
 
         Task savedTask =
                 taskRepository.save(
                         existingTask
                 );
+
+        Project project =
+                savedTask.getProject();
+
+        /*
+         * =====================================================
+         * TITLE CHANGE
+         * =====================================================
+         */
+
+        if (!Objects.equals(
+                oldTitle,
+                newTitle)) {
+
+            projectActivityService
+                    .recordTaskFieldChange(
+                            project,
+                            savedTask,
+                            email,
+                            ActivityType.TASK_UPDATED,
+                            "title",
+                            oldTitle,
+                            newTitle,
+                            "Changed task title from \""
+                                    + oldTitle
+                                    + "\" to \""
+                                    + newTitle
+                                    + "\""
+                    );
+        }
+
+        /*
+         * =====================================================
+         * DESCRIPTION CHANGE
+         * =====================================================
+         */
+
+        if (!Objects.equals(
+                oldDescription,
+                newDescription)) {
+
+            projectActivityService
+                    .recordTaskFieldChange(
+                            project,
+                            savedTask,
+                            email,
+                            ActivityType.TASK_UPDATED,
+                            "description",
+                            oldDescription,
+                            newDescription,
+                            "Updated description for task \""
+                                    + savedTask.getTitle()
+                                    + "\""
+                    );
+        }
+
+        /*
+         * =====================================================
+         * STATUS CHANGE
+         * =====================================================
+         */
+
+        if (!Objects.equals(
+                oldStatus,
+                newStatus)) {
+
+            projectActivityService
+                    .recordTaskFieldChange(
+                            project,
+                            savedTask,
+                            email,
+                            ActivityType.TASK_STATUS_CHANGED,
+                            "status",
+                            oldStatus,
+                            newStatus,
+                            "Changed task status from "
+                                    + displayValue(oldStatus)
+                                    + " to "
+                                    + displayValue(newStatus)
+                                    + " for \""
+                                    + savedTask.getTitle()
+                                    + "\""
+                    );
+        }
+
+        /*
+         * =====================================================
+         * PRIORITY CHANGE
+         * =====================================================
+         */
+
+        if (!Objects.equals(
+                oldPriority,
+                newPriority)) {
+
+            projectActivityService
+                    .recordTaskFieldChange(
+                            project,
+                            savedTask,
+                            email,
+                            ActivityType.TASK_UPDATED,
+                            "priority",
+                            oldPriority,
+                            newPriority,
+                            "Changed task priority from "
+                                    + displayValue(oldPriority)
+                                    + " to "
+                                    + displayValue(newPriority)
+                                    + " for \""
+                                    + savedTask.getTitle()
+                                    + "\""
+                    );
+        }
+
+        /*
+         * =====================================================
+         * DUE DATE CHANGE
+         * =====================================================
+         */
+
+        if (!Objects.equals(
+                oldDueDate,
+                newDueDate)) {
+
+            projectActivityService
+                    .recordTaskFieldChange(
+                            project,
+                            savedTask,
+                            email,
+                            ActivityType.TASK_UPDATED,
+                            "dueDate",
+                            dateValue(
+                                    oldDueDate
+                            ),
+                            dateValue(
+                                    newDueDate
+                            ),
+                            "Changed due date for task \""
+                                    + savedTask.getTitle()
+                                    + "\""
+                    );
+        }
+
+        /*
+         * =====================================================
+         * ASSIGNEE CHANGE
+         * =====================================================
+         */
+
+        recordAssigneeChange(
+                project,
+                savedTask,
+                email,
+                oldAssignee,
+                newAssignee
+        );
+
+        /*
+         * =====================================================
+         * LABEL CHANGE
+         * =====================================================
+         */
+
+        if (!Objects.equals(
+                oldLabels,
+                newLabelNames)) {
+
+            projectActivityService
+                    .recordTaskFieldChange(
+                            project,
+                            savedTask,
+                            email,
+                            ActivityType.TASK_LABELS_CHANGED,
+                            "labels",
+                            oldLabels,
+                            newLabelNames,
+                            "Updated labels for task \""
+                                    + savedTask.getTitle()
+                                    + "\""
+                    );
+        }
 
         return toResponse(
                 savedTask
@@ -303,9 +609,153 @@ public class TaskService {
                         email
                 );
 
+        Project project =
+                task.getProject();
+
+        /*
+         * Sequence 15A
+         *
+         * Record the deletion BEFORE deleting the task.
+         *
+         * V7 uses:
+         *
+         * ON DELETE SET NULL
+         *
+         * for project_activity.task_id, so the activity record
+         * remains after the task itself is removed.
+         *
+         * The task ID is also included in the description so
+         * the history remains meaningful after task_id becomes
+         * NULL.
+         */
+
+        projectActivityService
+                .recordTaskActivity(
+                        project,
+                        task,
+                        email,
+                        ActivityType.TASK_DELETED,
+                        "Deleted task \""
+                                + task.getTitle()
+                                + "\" (task #"
+                                + task.getId()
+                                + ")"
+                );
+
         taskRepository.delete(
                 task
         );
+    }
+
+    // =========================================================
+    // SEQUENCE 15A - RECORD ASSIGNEE CHANGE
+    // =========================================================
+
+    private void recordAssigneeChange(
+            Project project,
+            Task task,
+            String email,
+            AppUser oldAssignee,
+            AppUser newAssignee) {
+
+        Long oldAssigneeId =
+                oldAssignee == null
+                        ? null
+                        : oldAssignee.getId();
+
+        Long newAssigneeId =
+                newAssignee == null
+                        ? null
+                        : newAssignee.getId();
+
+        /*
+         * No assignment change.
+         */
+        if (Objects.equals(
+                oldAssigneeId,
+                newAssigneeId)) {
+
+            return;
+        }
+
+        String oldValue =
+                assigneeValue(
+                        oldAssignee
+                );
+
+        String newValue =
+                assigneeValue(
+                        newAssignee
+                );
+
+        /*
+         * Unassigned -> Assigned
+         */
+        if (oldAssignee == null
+                && newAssignee != null) {
+
+            projectActivityService
+                    .recordTaskFieldChange(
+                            project,
+                            task,
+                            email,
+                            ActivityType.TASK_ASSIGNED,
+                            "assignee",
+                            null,
+                            newValue,
+                            "Assigned task \""
+                                    + task.getTitle()
+                                    + "\" to "
+                                    + newValue
+                    );
+
+            return;
+        }
+
+        /*
+         * Assigned -> Unassigned
+         */
+        if (oldAssignee != null
+                && newAssignee == null) {
+
+            projectActivityService
+                    .recordTaskFieldChange(
+                            project,
+                            task,
+                            email,
+                            ActivityType.TASK_UNASSIGNED,
+                            "assignee",
+                            oldValue,
+                            null,
+                            "Unassigned "
+                                    + oldValue
+                                    + " from task \""
+                                    + task.getTitle()
+                                    + "\""
+                    );
+
+            return;
+        }
+
+        /*
+         * Assigned user A -> Assigned user B
+         */
+        projectActivityService
+                .recordTaskFieldChange(
+                        project,
+                        task,
+                        email,
+                        ActivityType.TASK_ASSIGNED,
+                        "assignee",
+                        oldValue,
+                        newValue,
+                        "Reassigned task \""
+                                + task.getTitle()
+                                + "\" from "
+                                + oldValue
+                                + " to "
+                                + newValue
+                );
     }
 
     // =========================================================
@@ -334,6 +784,178 @@ public class TaskService {
     }
 
     // =========================================================
+    // SEQUENCE 15A - ASSIGNEE DISPLAY VALUE
+    // =========================================================
+
+    private String assigneeValue(
+            AppUser user) {
+
+        if (user == null) {
+
+            return null;
+        }
+
+        String name =
+                user.getName();
+
+        String email =
+                user.getEmail();
+
+        if (name != null
+                && !name.isBlank()
+                && email != null
+                && !email.isBlank()) {
+
+            return name.trim()
+                    + " <"
+                    + email.trim()
+                    + ">";
+        }
+
+        if (name != null
+                && !name.isBlank()) {
+
+            return name.trim();
+        }
+
+        if (email != null
+                && !email.isBlank()) {
+
+            return email.trim();
+        }
+
+        if (user.getId() != null) {
+
+            return "User #"
+                    + user.getId();
+        }
+
+        return "Unknown user";
+    }
+
+    // =========================================================
+    // SEQUENCE 13B - LABEL RESOLUTION
+    // =========================================================
+
+    private Set<Label> resolveLabels(
+            Set<String> labelNames) {
+
+        Set<Label> resolvedLabels =
+                new HashSet<>();
+
+        if (labelNames == null
+                || labelNames.isEmpty()) {
+
+            return resolvedLabels;
+        }
+
+        for (String labelName : labelNames) {
+
+            String normalizedName =
+                    normalizeLabelName(
+                            labelName
+                    );
+
+            if (normalizedName == null) {
+
+                continue;
+            }
+
+            Label label =
+                    labelRepository
+                            .findByNameIgnoreCase(
+                                    normalizedName
+                            )
+                            .orElseGet(
+                                    () ->
+                                            labelRepository.save(
+                                                    new Label(
+                                                            normalizedName
+                                                    )
+                                            )
+                            );
+
+            resolvedLabels.add(
+                    label
+            );
+        }
+
+        return resolvedLabels;
+    }
+
+    // =========================================================
+    // SEQUENCE 15A - STABLE LABEL SNAPSHOT
+    // =========================================================
+
+    private String labelNames(
+            Set<Label> labels) {
+
+        if (labels == null
+                || labels.isEmpty()) {
+
+            return null;
+        }
+
+        String value =
+                labels.stream()
+                        .filter(
+                                Objects::nonNull
+                        )
+                        .map(
+                                Label::getName
+                        )
+                        .filter(
+                                Objects::nonNull
+                        )
+                        .map(
+                                String::trim
+                        )
+                        .filter(
+                                name ->
+                                        !name.isEmpty()
+                        )
+                        .sorted(
+                                String.CASE_INSENSITIVE_ORDER
+                        )
+                        .collect(
+                                Collectors.joining(
+                                        ", "
+                                )
+                        );
+
+        return value.isBlank()
+                ? null
+                : value;
+    }
+
+    // =========================================================
+    // SEQUENCE 13B - LABEL NAME NORMALIZATION
+    // =========================================================
+
+    private String normalizeLabelName(
+            String labelName) {
+
+        if (labelName == null
+                || labelName.isBlank()) {
+
+            return null;
+        }
+
+        String normalized =
+                labelName.trim();
+
+        if (normalized.length() > 100) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Label name cannot exceed 100 characters."
+            );
+        }
+
+        return normalized;
+    }
+
+    // =========================================================
     // ENTITY -> RESPONSE DTO
     // =========================================================
 
@@ -347,13 +969,6 @@ public class TaskService {
                 task.getId()
         );
 
-        /*
-         * Task stores a Project relationship.
-         *
-         * Project ID is obtained through:
-         *
-         * Task -> Project -> ID
-         */
         if (task.getProject() != null) {
 
             response.setProjectId(
@@ -392,9 +1007,6 @@ public class TaskService {
 
         /*
          * Sequence 13A - Assignee
-         *
-         * These values stay null when the task
-         * has not been assigned.
          */
         if (task.getAssignee() != null) {
 
@@ -411,6 +1023,31 @@ public class TaskService {
             response.setAssigneeEmail(
                     task.getAssignee()
                             .getEmail()
+            );
+        }
+
+        /*
+         * Sequence 13B - Labels
+         */
+        if (task.getLabels() != null) {
+
+            Set<String> labelNames =
+                    new HashSet<>();
+
+            for (Label label :
+                    task.getLabels()) {
+
+                if (label != null
+                        && label.getName() != null) {
+
+                    labelNames.add(
+                            label.getName()
+                    );
+                }
+            }
+
+            response.setLabels(
+                    labelNames
             );
         }
 
@@ -705,5 +1342,38 @@ public class TaskService {
                                     + dueDateFilter
                     );
         };
+    }
+
+    // =========================================================
+    // SEQUENCE 15A - DATE VALUE
+    // =========================================================
+
+    private String dateValue(
+            LocalDate date) {
+
+        return date == null
+                ? null
+                : date.toString();
+    }
+
+    // =========================================================
+    // SEQUENCE 15A - DISPLAY VALUE
+    // =========================================================
+
+    private String displayValue(
+            String value) {
+
+        if (value == null
+                || value.isBlank()) {
+
+            return "(none)";
+        }
+
+        return value
+                .trim()
+                .replace(
+                        '_',
+                        ' '
+                );
     }
 }

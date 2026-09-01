@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import fullstack.dto.project.ProjectHealthResponse;
 import fullstack.dto.project.ProjectRequest;
 import fullstack.dto.project.ProjectResponse;
 
+import fullstack.model.ActivityType;
 import fullstack.model.AppUser;
 import fullstack.model.Project;
 
@@ -34,17 +36,24 @@ public class ProjectService {
     private final UserRepository
             userRepository;
 
+    /*
+     * Sequence 15A
+     *
+     * Central activity-history service used to record
+     * project-level audit events.
+     */
+    private final ProjectActivityService
+            projectActivityService;
+
     // =========================================================
     // CONSTRUCTOR
     // =========================================================
 
     public ProjectService(
-
             ProjectRepository projectRepository,
-
             TaskRepository taskRepository,
-
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ProjectActivityService projectActivityService) {
 
         this.projectRepository =
                 projectRepository;
@@ -54,6 +63,9 @@ public class ProjectService {
 
         this.userRepository =
                 userRepository;
+
+        this.projectActivityService =
+                projectActivityService;
     }
 
     // =========================================================
@@ -82,9 +94,7 @@ public class ProjectService {
 
     @Transactional(readOnly = true)
     public ProjectResponse getProjectById(
-
             Long projectId,
-
             String email) {
 
         Project project =
@@ -103,9 +113,7 @@ public class ProjectService {
     // =========================================================
 
     public ProjectResponse createProject(
-
             ProjectRequest request,
-
             String email) {
 
         AppUser owner =
@@ -116,9 +124,7 @@ public class ProjectService {
                         .orElseThrow(
                                 () ->
                                         new ResponseStatusException(
-
                                                 HttpStatus.UNAUTHORIZED,
-
                                                 "Authenticated user was not found."
                                         )
                         );
@@ -147,6 +153,22 @@ public class ProjectService {
                         project
                 );
 
+        /*
+         * Sequence 15A - Activity History
+         *
+         * Record creation only after the project has been
+         * successfully persisted so the activity row can
+         * reference the generated project ID.
+         */
+        projectActivityService.recordActivity(
+                savedProject,
+                email,
+                ActivityType.PROJECT_CREATED,
+                "Created project \""
+                        + savedProject.getName()
+                        + "\""
+        );
+
         return toResponse(
                 savedProject
         );
@@ -157,11 +179,8 @@ public class ProjectService {
     // =========================================================
 
     public ProjectResponse updateProject(
-
             Long projectId,
-
             ProjectRequest request,
-
             String email) {
 
         Project existingProject =
@@ -169,6 +188,19 @@ public class ProjectService {
                         projectId,
                         email
                 );
+
+        /*
+         * Sequence 15A
+         *
+         * Capture the original values before changing the
+         * managed entity. These values are used to create
+         * meaningful audit records after the update succeeds.
+         */
+        String oldName =
+                existingProject.getName();
+
+        String oldDescription =
+                existingProject.getDescription();
 
         existingProject.setName(
                 normalizeName(
@@ -187,6 +219,54 @@ public class ProjectService {
                         existingProject
                 );
 
+        /*
+         * Record project-name changes.
+         *
+         * Objects.equals is deliberately used so the comparison
+         * remains null-safe even if older database data contains
+         * an unexpected null value.
+         */
+        if (!Objects.equals(
+                oldName,
+                savedProject.getName())) {
+
+            projectActivityService
+                    .recordActivity(
+                            savedProject,
+                            null,
+                            email,
+                            ActivityType.PROJECT_UPDATED,
+                            "name",
+                            oldName,
+                            savedProject.getName(),
+                            "Changed project name from \""
+                                    + oldName
+                                    + "\" to \""
+                                    + savedProject.getName()
+                                    + "\""
+                    );
+        }
+
+        /*
+         * Record project-description changes.
+         */
+        if (!Objects.equals(
+                oldDescription,
+                savedProject.getDescription())) {
+
+            projectActivityService
+                    .recordActivity(
+                            savedProject,
+                            null,
+                            email,
+                            ActivityType.PROJECT_UPDATED,
+                            "description",
+                            oldDescription,
+                            savedProject.getDescription(),
+                            "Updated project description"
+                    );
+        }
+
         return toResponse(
                 savedProject
         );
@@ -197,9 +277,7 @@ public class ProjectService {
     // =========================================================
 
     public void deleteProject(
-
             Long projectId,
-
             String email) {
 
         Project project =
@@ -208,6 +286,21 @@ public class ProjectService {
                         email
                 );
 
+        /*
+         * Sequence 15A
+         *
+         * PROJECT_DELETED is intentionally NOT recorded here.
+         *
+         * The current project_activity schema is project-scoped
+         * and its project foreign key uses ON DELETE CASCADE.
+         *
+         * Recording an activity immediately before deleting the
+         * project would therefore create an audit row that SQL
+         * Server would immediately remove with the project.
+         *
+         * We will preserve the existing delete behavior until
+         * deletion-history semantics are addressed separately.
+         */
         projectRepository.delete(
                 project
         );
@@ -310,9 +403,7 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public ProjectHealthResponse
             getProjectHealth(
-
                     Long projectId,
-
                     String email) {
 
         /*
@@ -389,19 +480,12 @@ public class ProjectService {
                         );
 
         return new ProjectHealthResponse(
-
                 totalTasks,
-
                 openTasks,
-
                 inProgressTasks,
-
                 completedTasks,
-
                 overdueTasks,
-
                 dueSoonTasks,
-
                 completionPercentage
         );
     }
@@ -411,24 +495,18 @@ public class ProjectService {
     // =========================================================
 
     private Project getOwnedProject(
-
             Long projectId,
-
             String email) {
 
         return projectRepository
                 .findByIdAndOwner_EmailIgnoreCase(
-
                         projectId,
-
                         email
                 )
                 .orElseThrow(
                         () ->
                                 new ResponseStatusException(
-
                                         HttpStatus.NOT_FOUND,
-
                                         "Project not found."
                                 )
                 );
@@ -442,13 +520,9 @@ public class ProjectService {
             Project project) {
 
         return new ProjectResponse(
-
                 project.getId(),
-
                 project.getName(),
-
                 project.getDescription(),
-
                 project.getCreatedDate()
         );
     }

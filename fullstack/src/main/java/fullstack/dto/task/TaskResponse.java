@@ -2,6 +2,8 @@ package fullstack.dto.task;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 public class TaskResponse {
 
@@ -32,6 +34,17 @@ public class TaskResponse {
     private String assigneeName;
 
     private String assigneeEmail;
+
+    // =========================================================
+    // SEQUENCE 13B - LABEL FIELDS
+    //
+    // Labels are returned to React as simple names.
+    //
+    // Example:
+    // ["Frontend", "Bug", "Urgent"]
+    // =========================================================
+
+    private Set<String> labels = new HashSet<>();
 
     // =========================================================
     // DEFAULT CONSTRUCTOR
@@ -178,5 +191,23 @@ public class TaskResponse {
             String assigneeEmail) {
 
         this.assigneeEmail = assigneeEmail;
+    }
+
+    // =========================================================
+    // LABEL GETTERS / SETTERS
+    // =========================================================
+
+    public Set<String> getLabels() {
+
+        return labels;
+    }
+
+    public void setLabels(
+            Set<String> labels) {
+
+        this.labels =
+                labels != null
+                        ? labels
+                        : new HashSet<>();
     }
 }

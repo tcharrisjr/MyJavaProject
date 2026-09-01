@@ -2,6 +2,8 @@ package fullstack.model;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,6 +12,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -94,6 +98,26 @@ public class Task {
     private AppUser assignee;
 
     // =========================================================
+    // SEQUENCE 13B - TASK LABELS
+    //
+    // A task may contain multiple labels.
+    //
+    // Labels are shared across tasks through the task_labels
+    // join table.
+    //
+    // No cascade is configured because deleting a task should
+    // not delete a shared label.
+    // =========================================================
+
+    @ManyToMany
+    @JoinTable(
+            name = "task_labels",
+            joinColumns = @JoinColumn(name = "task_id"),
+            inverseJoinColumns = @JoinColumn(name = "label_id")
+    )
+    private Set<Label> labels = new HashSet<>();
+
+    // =========================================================
     // CONSTRUCTOR
     // =========================================================
 
@@ -111,7 +135,6 @@ public class Task {
                 LocalDateTime.now();
 
         if (createdDate == null) {
-
             createdDate =
                     now;
         }
@@ -254,4 +277,21 @@ public class Task {
         this.assignee =
                 assignee;
     }
+
+    // =========================================================
+    // LABEL GETTER / SETTER
+    // =========================================================
+
+    public Set<Label> getLabels() {
+
+        return labels;
+    }
+
+    public void setLabels(
+            Set<Label> labels) {
+
+        this.labels =
+                labels;
+    }
+
 }

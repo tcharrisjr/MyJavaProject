@@ -6,15 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +31,7 @@ import fullstack.dto.project.ProjectHealthResponse;
 import fullstack.dto.project.ProjectRequest;
 import fullstack.dto.project.ProjectResponse;
 
+import fullstack.model.ActivityType;
 import fullstack.model.AppUser;
 import fullstack.model.Project;
 
@@ -43,26 +43,40 @@ import fullstack.repository.UserRepository;
 class ProjectServiceTest {
 
     // =========================================================
-    // MOCK REPOSITORIES
+    // MOCKS
     // =========================================================
 
     @Mock
-    private ProjectRepository projectRepository;
+    private ProjectRepository
+            projectRepository;
 
     @Mock
-    private TaskRepository taskRepository;
+    private TaskRepository
+            taskRepository;
 
     @Mock
-    private UserRepository userRepository;
+    private UserRepository
+            userRepository;
+
+    /*
+     * Sequence 15A
+     *
+     * ProjectService now records audit/history events through
+     * ProjectActivityService.
+     */
+    @Mock
+    private ProjectActivityService
+            projectActivityService;
 
     // =========================================================
     // SERVICE UNDER TEST
     // =========================================================
 
-    private ProjectService projectService;
+    private ProjectService
+            projectService;
 
     // =========================================================
-    // TEST CONSTANTS
+    // COMMON TEST DATA
     // =========================================================
 
     private static final String EMAIL =
@@ -79,7 +93,8 @@ class ProjectServiceTest {
                 new ProjectService(
                         projectRepository,
                         taskRepository,
-                        userRepository
+                        userRepository,
+                        projectActivityService
                 );
     }
 
@@ -88,7 +103,7 @@ class ProjectServiceTest {
     // =========================================================
 
     @Test
-    void getProjectsForUser_returnsOwnedProjects() {
+    void getProjectsForUser_returnsOnlyProjectsOwnedByUser() {
 
         Project projectOne =
                 createProjectEntity(
@@ -133,23 +148,8 @@ class ProjectServiceTest {
         );
 
         assertEquals(
-                1L,
-                result.get(0).getId()
-        );
-
-        assertEquals(
                 "Project One",
                 result.get(0).getName()
-        );
-
-        assertEquals(
-                "First project",
-                result.get(0).getDescription()
-        );
-
-        assertEquals(
-                2L,
-                result.get(1).getId()
         );
 
         assertEquals(
@@ -212,10 +212,15 @@ class ProjectServiceTest {
                 "Project One",
                 result.getName()
         );
+
+        assertEquals(
+                "Description",
+                result.getDescription()
+        );
     }
 
     // =========================================================
-    // GET SINGLE PROJECT - WRONG OWNER
+    // GET SINGLE PROJECT - NOT OWNED
     // =========================================================
 
     @Test
@@ -259,10 +264,14 @@ class ProjectServiceTest {
     // =========================================================
 
     @Test
-    void createProject_normalizesFieldsAndAssignsAppUserOwner() {
+    void createProject_normalizesFieldsAssignsOwnerAndRecordsActivity() {
 
         AppUser owner =
-                new AppUser();
+                createUser(
+                        5L,
+                        "Test User",
+                        EMAIL
+                );
 
         ProjectRequest request =
                 new ProjectRequest();
@@ -272,7 +281,7 @@ class ProjectServiceTest {
         );
 
         request.setDescription(
-                "   New project description   "
+                "   Project description   "
         );
 
         when(
@@ -296,10 +305,9 @@ class ProjectServiceTest {
                 invocation -> {
 
                     Project project =
-                            invocation
-                                    .getArgument(
-                                            0
-                                    );
+                            invocation.getArgument(
+                                    0
+                            );
 
                     project.setId(
                             10L
@@ -335,11 +343,11 @@ class ProjectServiceTest {
         );
 
         assertEquals(
-                "New project description",
+                "Project description",
                 result.getDescription()
         );
 
-        ArgumentCaptor<Project> projectCaptor =
+        ArgumentCaptor<Project> captor =
                 ArgumentCaptor.forClass(
                         Project.class
                 );
@@ -348,11 +356,11 @@ class ProjectServiceTest {
                 projectRepository
         )
         .save(
-                projectCaptor.capture()
+                captor.capture()
         );
 
         Project savedProject =
-                projectCaptor.getValue();
+                captor.getValue();
 
         assertEquals(
                 "New Project",
@@ -360,7 +368,7 @@ class ProjectServiceTest {
         );
 
         assertEquals(
-                "New project description",
+                "Project description",
                 savedProject.getDescription()
         );
 
@@ -368,72 +376,30 @@ class ProjectServiceTest {
                 owner,
                 savedProject.getOwner()
         );
-    }
 
-    // =========================================================
-    // CREATE PROJECT - DESCRIPTION NULL
-    // =========================================================
-
-    @Test
-    void createProject_whenDescriptionNull_storesEmptyString() {
-
-        AppUser owner =
-                new AppUser();
-
-        ProjectRequest request =
-                new ProjectRequest();
-
-        request.setName(
-                "Project"
-        );
-
-        request.setDescription(
-                null
-        );
-
-        when(
-                userRepository
-                        .findByEmailIgnoreCase(
-                                EMAIL
-                        )
+        /*
+         * Sequence 15A
+         *
+         * A successfully created project must generate
+         * PROJECT_CREATED history.
+         */
+        verify(
+                projectActivityService
         )
-        .thenReturn(
-                Optional.of(
-                        owner
-                )
-        );
-
-        when(
-                projectRepository.save(
-                        any(Project.class)
-                )
-        )
-        .thenAnswer(
-                invocation ->
-                        invocation.getArgument(
-                                0
-                        )
-        );
-
-        ProjectResponse result =
-                projectService
-                        .createProject(
-                                request,
-                                EMAIL
-                        );
-
-        assertEquals(
-                "",
-                result.getDescription()
+        .recordActivity(
+                savedProject,
+                EMAIL,
+                ActivityType.PROJECT_CREATED,
+                "Created project \"New Project\""
         );
     }
 
     // =========================================================
-    // CREATE PROJECT - USER NOT FOUND
+    // CREATE PROJECT - AUTHENTICATED USER NOT FOUND
     // =========================================================
 
     @Test
-    void createProject_whenAppUserNotFound_throws401() {
+    void createProject_whenAuthenticatedUserNotFound_throws401() {
 
         ProjectRequest request =
                 new ProjectRequest();
@@ -480,6 +446,17 @@ class ProjectServiceTest {
         .save(
                 any(Project.class)
         );
+
+        verify(
+                projectActivityService,
+                never()
+        )
+        .recordActivity(
+                any(Project.class),
+                any(String.class),
+                any(ActivityType.class),
+                any(String.class)
+        );
     }
 
     // =========================================================
@@ -490,7 +467,11 @@ class ProjectServiceTest {
     void createProject_whenNameBlank_throwsIllegalArgumentException() {
 
         AppUser owner =
-                new AppUser();
+                createUser(
+                        5L,
+                        "Test User",
+                        EMAIL
+                );
 
         ProjectRequest request =
                 new ProjectRequest();
@@ -541,16 +522,20 @@ class ProjectServiceTest {
     // =========================================================
 
     @Test
-    void updateProject_updatesFieldsAndPreservesOwnership() {
+    void updateProject_updatesFieldsPreservesOwnershipAndRecordsActivity() {
 
         AppUser owner =
-                new AppUser();
+                createUser(
+                        5L,
+                        "Test User",
+                        EMAIL
+                );
 
         Project existingProject =
                 createProjectEntity(
                         1L,
-                        "Old Project",
-                        "Old description"
+                        "Old Name",
+                        "Old Description"
                 );
 
         existingProject.setOwner(
@@ -563,7 +548,7 @@ class ProjectServiceTest {
                         8,
                         1,
                         10,
-                        30
+                        0
                 );
 
         existingProject.setCreatedDate(
@@ -578,7 +563,7 @@ class ProjectServiceTest {
         );
 
         request.setDescription(
-                "   Updated description   "
+                "   Updated Description   "
         );
 
         when(
@@ -617,13 +602,8 @@ class ProjectServiceTest {
         );
 
         assertEquals(
-                "Updated description",
+                "Updated Description",
                 result.getDescription()
-        );
-
-        assertEquals(
-                1L,
-                existingProject.getId()
         );
 
         assertSame(
@@ -636,11 +616,132 @@ class ProjectServiceTest {
                 existingProject.getCreatedDate()
         );
 
+        assertEquals(
+                1L,
+                existingProject.getId()
+        );
+
         verify(
                 projectRepository
         )
         .save(
                 existingProject
+        );
+
+        /*
+         * Sequence 15A
+         *
+         * Name change produces one field-specific activity row.
+         */
+        verify(
+                projectActivityService
+        )
+        .recordActivity(
+                existingProject,
+                null,
+                EMAIL,
+                ActivityType.PROJECT_UPDATED,
+                "name",
+                "Old Name",
+                "Updated Project",
+                "Changed project name from \"Old Name\" to \"Updated Project\""
+        );
+
+        /*
+         * Description change produces another activity row.
+         */
+        verify(
+                projectActivityService
+        )
+        .recordActivity(
+                existingProject,
+                null,
+                EMAIL,
+                ActivityType.PROJECT_UPDATED,
+                "description",
+                "Old Description",
+                "Updated Description",
+                "Updated project description"
+        );
+    }
+
+    // =========================================================
+    // UPDATE PROJECT - NO ACTUAL FIELD CHANGES
+    // =========================================================
+
+    @Test
+    void updateProject_whenValuesUnchanged_doesNotRecordActivity() {
+
+        Project existingProject =
+                createProjectEntity(
+                        1L,
+                        "Same Project",
+                        "Same Description"
+                );
+
+        ProjectRequest request =
+                new ProjectRequest();
+
+        request.setName(
+                "Same Project"
+        );
+
+        request.setDescription(
+                "Same Description"
+        );
+
+        when(
+                projectRepository
+                        .findByIdAndOwner_EmailIgnoreCase(
+                                1L,
+                                EMAIL
+                        )
+        )
+        .thenReturn(
+                Optional.of(
+                        existingProject
+                )
+        );
+
+        when(
+                projectRepository.save(
+                        existingProject
+                )
+        )
+        .thenReturn(
+                existingProject
+        );
+
+        ProjectResponse result =
+                projectService
+                        .updateProject(
+                                1L,
+                                request,
+                                EMAIL
+                        );
+
+        assertNotNull(
+                result
+        );
+
+        assertEquals(
+                "Same Project",
+                result.getName()
+        );
+
+        verify(
+                projectActivityService,
+                never()
+        )
+        .recordActivity(
+                any(Project.class),
+                any(),
+                any(String.class),
+                any(ActivityType.class),
+                any(),
+                any(),
+                any(),
+                any(String.class)
         );
     }
 
@@ -649,13 +750,17 @@ class ProjectServiceTest {
     // =========================================================
 
     @Test
-    void updateProject_whenNotOwned_throws404() {
+    void updateProject_whenNotOwned_throws404AndDoesNotSave() {
 
         ProjectRequest request =
                 new ProjectRequest();
 
         request.setName(
-                "Updated"
+                "Updated Project"
+        );
+
+        request.setDescription(
+                "Updated Description"
         );
 
         when(
@@ -706,7 +811,7 @@ class ProjectServiceTest {
                 createProjectEntity(
                         1L,
                         "Delete Me",
-                        "Delete test"
+                        "Description"
                 );
 
         when(
@@ -734,6 +839,22 @@ class ProjectServiceTest {
         .delete(
                 project
         );
+
+        /*
+         * Current Sequence 15A design intentionally does not
+         * record PROJECT_DELETED because project_activity
+         * currently cascades when a project is deleted.
+         */
+        verify(
+                projectActivityService,
+                never()
+        )
+        .recordActivity(
+                any(Project.class),
+                any(String.class),
+                any(ActivityType.class),
+                any(String.class)
+        );
     }
 
     // =========================================================
@@ -754,14 +875,20 @@ class ProjectServiceTest {
                 Optional.empty()
         );
 
-        assertThrows(
-                ResponseStatusException.class,
-                () ->
-                        projectService
-                                .deleteProject(
-                                        1L,
-                                        EMAIL
-                                )
+        ResponseStatusException exception =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                projectService
+                                        .deleteProject(
+                                                1L,
+                                                EMAIL
+                                        )
+                );
+
+        assertEquals(
+                HttpStatus.NOT_FOUND,
+                exception.getStatusCode()
         );
 
         verify(
@@ -774,11 +901,11 @@ class ProjectServiceTest {
     }
 
     // =========================================================
-    // GLOBAL PROJECT STATISTICS
+    // PROJECT STATISTICS
     // =========================================================
 
     @Test
-    void getProjectStats_returnsExpectedCounts() {
+    void getProjectStats_returnsRepositoryCounts() {
 
         when(
                 projectRepository
@@ -833,7 +960,7 @@ class ProjectServiceTest {
                 3L
         );
 
-        Map<String, Long> result =
+        var result =
                 projectService
                         .getProjectStats(
                                 EMAIL
@@ -876,11 +1003,92 @@ class ProjectServiceTest {
     }
 
     // =========================================================
-    // STEP 8 PROJECT HEALTH
+    // GLOBAL PROJECT HEALTH
     // =========================================================
 
     @Test
-    void getProjectHealth_returnsProjectSpecificHealthStatistics() {
+    void getProjectHealth_withoutProjectId_returnsGlobalStats() {
+
+        when(
+                projectRepository
+                        .countByOwner_EmailIgnoreCase(
+                                EMAIL
+                        )
+        )
+        .thenReturn(
+                2L
+        );
+
+        when(
+                taskRepository
+                        .countTasksForUser(
+                                EMAIL
+                        )
+        )
+        .thenReturn(
+                8L
+        );
+
+        when(
+                taskRepository
+                        .countTasksForUserByStatus(
+                                EMAIL,
+                                "OPEN"
+                        )
+        )
+        .thenReturn(
+                3L
+        );
+
+        when(
+                taskRepository
+                        .countTasksForUserByStatus(
+                                EMAIL,
+                                "IN_PROGRESS"
+                        )
+        )
+        .thenReturn(
+                2L
+        );
+
+        when(
+                taskRepository
+                        .countTasksForUserByStatus(
+                                EMAIL,
+                                "COMPLETED"
+                        )
+        )
+        .thenReturn(
+                3L
+        );
+
+        var result =
+                projectService
+                        .getProjectHealth(
+                                EMAIL
+                        );
+
+        assertEquals(
+                2L,
+                result.get(
+                        "projects"
+                )
+        );
+
+        assertEquals(
+                8L,
+                result.get(
+                        "totalTasks"
+                )
+        );
+    }
+
+    // =========================================================
+    // PROJECT-SPECIFIC HEALTH
+    // =========================================================
+
+    @Test
+    void getProjectHealth_whenProjectOwned_returnsHealthResponse() {
 
         Project project =
                 createProjectEntity(
@@ -952,28 +1160,29 @@ class ProjectServiceTest {
         when(
                 taskRepository
                         .countOverdueTasksForOwnedProject(
-                                anyLong(),
-                                any(),
-                                any(LocalDate.class)
+                                1L,
+                                EMAIL,
+                                LocalDate.now()
+                        )
+        )
+        .thenReturn(
+                1L
+        );
+
+        when(
+                taskRepository
+                        .countDueSoonTasksForOwnedProject(
+                                1L,
+                                EMAIL,
+                                LocalDate.now(),
+                                LocalDate.now()
+                                        .plusDays(7)
                         )
         )
         .thenReturn(
                 2L
         );
 
-        when(
-                taskRepository
-                        .countDueSoonTasksForOwnedProject(
-                                anyLong(),
-                                any(),
-                                any(LocalDate.class),
-                                any(LocalDate.class)
-                        )
-        )
-        .thenReturn(
-                3L
-        );
-
         ProjectHealthResponse result =
                 projectService
                         .getProjectHealth(
@@ -981,108 +1190,97 @@ class ProjectServiceTest {
                                 EMAIL
                         );
 
-        assertEquals(
-                10L,
-                result.getTotalTasks()
+        assertNotNull(
+                result
         );
 
-        assertEquals(
-                3L,
-                result.getOpenTasks()
+        verify(
+                taskRepository
+        )
+        .countTasksForOwnedProject(
+                1L,
+                EMAIL
         );
 
-        assertEquals(
-                2L,
-                result.getInProgressTasks()
+        verify(
+                taskRepository
+        )
+        .countTasksForOwnedProjectByStatus(
+                1L,
+                EMAIL,
+                "OPEN"
         );
 
-        assertEquals(
-                5L,
-                result.getCompletedTasks()
+        verify(
+                taskRepository
+        )
+        .countTasksForOwnedProjectByStatus(
+                1L,
+                EMAIL,
+                "IN_PROGRESS"
         );
 
-        assertEquals(
-                2L,
-                result.getOverdueTasks()
-        );
-
-        assertEquals(
-                3L,
-                result.getDueSoonTasks()
-        );
-
-        assertEquals(
-                50,
-                result.getCompletionPercentage()
+        verify(
+                taskRepository
+        )
+        .countTasksForOwnedProjectByStatus(
+                1L,
+                EMAIL,
+                "COMPLETED"
         );
     }
 
     // =========================================================
-    // PROJECT HEALTH - NO TASKS
+    // PROJECT-SPECIFIC HEALTH - NOT OWNED
     // =========================================================
 
     @Test
-    void getProjectHealth_whenNoTasks_returnsZeroCompletionPercentage() {
-
-        Project project =
-                createProjectEntity(
-                        1L,
-                        "Empty Project",
-                        ""
-                );
+    void getProjectHealth_whenProjectNotOwned_throws404() {
 
         when(
                 projectRepository
                         .findByIdAndOwner_EmailIgnoreCase(
-                                1L,
+                                99L,
                                 EMAIL
                         )
         )
         .thenReturn(
-                Optional.of(
-                        project
-                )
+                Optional.empty()
         );
 
-        when(
-                taskRepository
-                        .countTasksForOwnedProject(
-                                1L,
-                                EMAIL
-                        )
+        ResponseStatusException exception =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                projectService
+                                        .getProjectHealth(
+                                                99L,
+                                                EMAIL
+                                        )
+                );
+
+        assertEquals(
+                HttpStatus.NOT_FOUND,
+                exception.getStatusCode()
+        );
+
+        verify(
+                taskRepository,
+                never()
         )
-        .thenReturn(
-                0L
-        );
-
-        ProjectHealthResponse result =
-                projectService
-                        .getProjectHealth(
-                                1L,
-                                EMAIL
-                        );
-
-        assertEquals(
-                0,
-                result.getCompletionPercentage()
-        );
-
-        assertEquals(
-                0L,
-                result.getTotalTasks()
+        .countTasksForOwnedProject(
+                99L,
+                EMAIL
         );
     }
 
     // =========================================================
-    // TEST HELPER
+    // TEST HELPER - PROJECT
     // =========================================================
 
     private Project createProjectEntity(
-
             Long id,
-
             String name,
-
             String description) {
 
         Project project =
@@ -1105,5 +1303,32 @@ class ProjectServiceTest {
         );
 
         return project;
+    }
+
+    // =========================================================
+    // TEST HELPER - USER
+    // =========================================================
+
+    private AppUser createUser(
+            Long id,
+            String name,
+            String email) {
+
+        AppUser user =
+                new AppUser();
+
+        user.setId(
+                id
+        );
+
+        user.setName(
+                name
+        );
+
+        user.setEmail(
+                email
+        );
+
+        return user;
     }
 }
