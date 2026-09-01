@@ -32,20 +32,15 @@ export class ApiRequestError
       message
     );
 
-
     this.name =
       "ApiRequestError";
-
 
     this.status =
       status;
 
-
     this.data =
       data;
-
   }
-
 }
 
 
@@ -70,7 +65,6 @@ export function getAuthToken() {
       "accessToken"
     )
   );
-
 }
 
 
@@ -85,15 +79,12 @@ export function setAuthToken(
     clearAuthToken();
 
     return;
-
   }
-
 
   localStorage.setItem(
     AUTH_TOKEN_KEY,
     token
   );
-
 }
 
 
@@ -103,16 +94,13 @@ export function clearAuthToken() {
     AUTH_TOKEN_KEY
   );
 
-
   localStorage.removeItem(
     "token"
   );
 
-
   localStorage.removeItem(
     "accessToken"
   );
-
 }
 
 
@@ -130,7 +118,6 @@ export async function apiRequest(
   const token =
     getAuthToken();
 
-
   const headers = {
 
     ...(options.body
@@ -141,7 +128,6 @@ export async function apiRequest(
       : {}),
 
     ...(options.headers || {}),
-
   };
 
 
@@ -155,7 +141,6 @@ export async function apiRequest(
 
     headers.Authorization =
       `Bearer ${token}`;
-
   }
 
 
@@ -188,20 +173,15 @@ export async function apiRequest(
       error
     );
 
-
     throw new ApiRequestError(
       "Unable to connect to the server."
     );
-
   }
 
 
   /*
    * =======================================================
    * NO CONTENT
-   * =======================================================
-   *
-   * HTTP 204 responses do not contain a response body.
    * =======================================================
    */
 
@@ -210,7 +190,6 @@ export async function apiRequest(
   ) {
 
     return null;
-
   }
 
 
@@ -218,28 +197,12 @@ export async function apiRequest(
    * =======================================================
    * READ RESPONSE
    * =======================================================
-   *
-   * IMPORTANT:
-   *
-   * The response body is assigned once.
-   *
-   * This avoids ESLint:
-   *
-   * no-useless-assignment
-   *
-   * which was previously triggered by:
-   *
-   * let data = null;
-   *
-   * followed by assigning data again in both branches.
-   * =======================================================
    */
 
   const contentType =
     response.headers.get(
       "content-type"
     );
-
 
   const data =
     contentType &&
@@ -268,10 +231,6 @@ export async function apiRequest(
       "An unexpected server error occurred.";
 
 
-    /*
-     * JSON API error response.
-     */
-
     if (
       data &&
       typeof data ===
@@ -282,13 +241,8 @@ export async function apiRequest(
         data.message ||
         data.error ||
         message;
-
     }
 
-
-    /*
-     * Plain-text API error response.
-     */
 
     if (
       typeof data ===
@@ -298,23 +252,12 @@ export async function apiRequest(
 
       message =
         data;
-
     }
 
 
     /*
      * =====================================================
      * UNAUTHORIZED
-     * =====================================================
-     *
-     * JWT may be:
-     *
-     * - missing
-     * - expired
-     * - invalid
-     *
-     * Clear local authentication state and notify
-     * AuthContext.
      * =====================================================
      */
 
@@ -324,13 +267,11 @@ export async function apiRequest(
 
       clearAuthToken();
 
-
       window.dispatchEvent(
         new Event(
           "auth:unauthorized"
         )
       );
-
     }
 
 
@@ -339,18 +280,10 @@ export async function apiRequest(
       response.status,
       data
     );
-
   }
 
 
-  /*
-   * =======================================================
-   * SUCCESS RESPONSE
-   * =======================================================
-   */
-
   return data;
-
 }
 
 
@@ -365,7 +298,6 @@ export function getProjects() {
   return apiRequest(
     "/api/projects"
   );
-
 }
 
 
@@ -391,7 +323,6 @@ export function createProject(
         ),
     }
   );
-
 }
 
 
@@ -418,7 +349,6 @@ export function updateProject(
         ),
     }
   );
-
 }
 
 
@@ -439,7 +369,6 @@ export function deleteProject(
         "DELETE",
     }
   );
-
 }
 
 
@@ -454,7 +383,6 @@ export function getProjectStats() {
   return apiRequest(
     "/api/projects/stats"
   );
-
 }
 
 
@@ -469,8 +397,6 @@ export function getProjectStats() {
  * Without projectId:
  *
  * GET /api/projects/health
- *
- * Both behaviors are retained for compatibility.
  * =========================================================
  */
 
@@ -486,14 +412,48 @@ export function getProjectHealth(
     return apiRequest(
       `/api/projects/${projectId}/health`
     );
-
   }
 
 
   return apiRequest(
     "/api/projects/health"
   );
+}
 
+
+/*
+ * =========================================================
+ * SEQUENCE 15A - PROJECT ACTIVITY
+ *
+ * GET /api/projects/{projectId}/activity
+ * =========================================================
+ */
+
+export function getProjectActivity(
+  projectId
+) {
+
+  return apiRequest(
+    `/api/projects/${projectId}/activity`
+  );
+}
+
+
+/*
+ * =========================================================
+ * PROJECT ACTIVITY COUNT
+ *
+ * Retained for future dashboard/statistics use.
+ * =========================================================
+ */
+
+export function getProjectActivityCount(
+  projectId
+) {
+
+  return apiRequest(
+    `/api/projects/${projectId}/activity/count`
+  );
 }
 
 
@@ -515,18 +475,12 @@ export function getTaskStats() {
   return apiRequest(
     "/api/tasks/stats"
   );
-
 }
 
 
 /*
  * =========================================================
  * FULL PROJECT TASK LIST
- *
- * Retained for compatibility with other pages.
- *
- * Dashboard.jsx uses the paginated endpoint for its task
- * workspace.
  * =========================================================
  */
 
@@ -537,7 +491,6 @@ export function getProjectTasks(
   return apiRequest(
     `/api/projects/${projectId}/tasks`
   );
-
 }
 
 
@@ -580,9 +533,7 @@ export function getProjectTasksPage(
 
 
   /*
-   * =======================================================
    * PAGINATION
-   * =======================================================
    */
 
   params.set(
@@ -591,7 +542,6 @@ export function getProjectTasksPage(
       page
     )
   );
-
 
   params.set(
     "size",
@@ -602,16 +552,13 @@ export function getProjectTasksPage(
 
 
   /*
-   * =======================================================
    * SORTING
-   * =======================================================
    */
 
   params.set(
     "sortBy",
     sortBy
   );
-
 
   params.set(
     "sortDirection",
@@ -620,9 +567,7 @@ export function getProjectTasksPage(
 
 
   /*
-   * =======================================================
    * STATUS FILTER
-   * =======================================================
    */
 
   if (
@@ -635,14 +580,11 @@ export function getProjectTasksPage(
       "status",
       status
     );
-
   }
 
 
   /*
-   * =======================================================
    * PRIORITY FILTER
-   * =======================================================
    */
 
   if (
@@ -655,14 +597,11 @@ export function getProjectTasksPage(
       "priority",
       priority
     );
-
   }
 
 
   /*
-   * =======================================================
    * SEARCH
-   * =======================================================
    */
 
   if (
@@ -674,14 +613,11 @@ export function getProjectTasksPage(
       "search",
       search.trim()
     );
-
   }
 
 
   /*
-   * =======================================================
    * DUE DATE FILTER
-   * =======================================================
    */
 
   if (
@@ -694,14 +630,12 @@ export function getProjectTasksPage(
       "dueDateFilter",
       dueDateFilter
     );
-
   }
 
 
   return apiRequest(
     `/api/projects/${projectId}/tasks/page?${params.toString()}`
   );
-
 }
 
 
@@ -728,7 +662,6 @@ export function createTask(
         ),
     }
   );
-
 }
 
 
@@ -756,7 +689,6 @@ export function updateTask(
         ),
     }
   );
-
 }
 
 
@@ -778,5 +710,4 @@ export function deleteTask(
         "DELETE",
     }
   );
-
 }

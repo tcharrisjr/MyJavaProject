@@ -10,6 +10,7 @@ import {
   updateProject,
   deleteProject,
   getProjectHealth,
+  getProjectActivity,
   getProjectTasksPage,
   createTask,
   updateTask,
@@ -19,6 +20,14 @@ import {
 import {
   getAssignees,
 } from "../api/authApi";
+
+import {
+  getTaskComments,
+  createTaskComment,
+  updateTaskComment,
+  deleteTaskComment,
+  getTaskCommentCount,
+} from "../api/commentApi";
 
 import "../Dashboard.css";
 
@@ -87,6 +96,7 @@ function Dashboard() {
     priority: "MEDIUM",
     dueDate: "",
     assigneeId: "",
+    labels: "",
   });
 
 
@@ -121,6 +131,21 @@ function Dashboard() {
     dueSoonTasks: 0,
     completionPercentage: 0,
   });
+
+
+  // =========================================================
+  // SEQUENCE 15A - PROJECT ACTIVITY
+  // =========================================================
+
+  const [
+    projectActivity,
+    setProjectActivity,
+  ] = useState([]);
+
+  const [
+    activityLoading,
+    setActivityLoading,
+  ] = useState(false);
 
 
   // =========================================================
@@ -233,6 +258,51 @@ function Dashboard() {
     updatingTaskId,
     setUpdatingTaskId,
   ] = useState(null);
+
+
+  // =========================================================
+  // SEQUENCE 14B - TASK COMMENTS
+  // =========================================================
+
+  const [
+    commentsTask,
+    setCommentsTask,
+  ] = useState(null);
+
+  const [
+    taskComments,
+    setTaskComments,
+  ] = useState([]);
+
+  const [
+    commentCounts,
+    setCommentCounts,
+  ] = useState({});
+
+  const [
+    commentsLoading,
+    setCommentsLoading,
+  ] = useState(false);
+
+  const [
+    commentSaving,
+    setCommentSaving,
+  ] = useState(false);
+
+  const [
+    commentText,
+    setCommentText,
+  ] = useState("");
+
+  const [
+    editingCommentId,
+    setEditingCommentId,
+  ] = useState(null);
+
+  const [
+    editingCommentText,
+    setEditingCommentText,
+  ] = useState("");
 
 
   // =========================================================
@@ -575,6 +645,11 @@ function Dashboard() {
       );
 
 
+      setProjectActivity(
+        []
+      );
+
+
       resetProjectHealth();
 
 
@@ -606,6 +681,9 @@ function Dashboard() {
       setLastPage(
         true
       );
+
+
+      resetCommentState();
 
     };
 
@@ -680,6 +758,61 @@ function Dashboard() {
       } finally {
 
         setHealthLoading(
+          false
+        );
+
+      }
+
+    };
+
+
+  // =========================================================
+  // SEQUENCE 15A - LOAD PROJECT ACTIVITY
+  // =========================================================
+
+  const loadProjectActivity =
+    async (
+      projectId
+    ) => {
+
+      try {
+
+        setActivityLoading(
+          true
+        );
+
+
+        const response =
+          await getProjectActivity(
+            projectId
+          );
+
+
+        setProjectActivity(
+          Array.isArray(
+            response
+          )
+            ? response
+            : []
+        );
+
+      } catch (
+        err
+      ) {
+
+        console.error(
+          "Unable to load project activity:",
+          err
+        );
+
+
+        setProjectActivity(
+          []
+        );
+
+      } finally {
+
+        setActivityLoading(
           false
         );
 
@@ -977,6 +1110,10 @@ function Dashboard() {
         loadTaskPage(
           selectedProject.id
         ),
+
+        loadProjectActivity(
+          selectedProject.id
+        ),
       ]);
 
     };
@@ -990,6 +1127,43 @@ function Dashboard() {
     async (
       project
     ) => {
+
+      // Clear all project-specific state before selecting the
+      // next project. This prevents stale task/comment data
+      // from being paired with the new project id.
+      setTasks(
+        []
+      );
+
+      setCommentCounts(
+        {}
+      );
+
+      resetCommentState();
+
+      setTotalElements(
+        0
+      );
+
+      setTotalPages(
+        0
+      );
+
+      setNumberOfElements(
+        0
+      );
+
+      setFirstPage(
+        true
+      );
+
+      setLastPage(
+        true
+      );
+
+      setProjectActivity(
+        []
+      );
 
       setSelectedProject(
         project
@@ -1043,9 +1217,15 @@ function Dashboard() {
 
       try {
 
-        await loadProjectHealth(
-          project.id
-        );
+        await Promise.all([
+          loadProjectHealth(
+            project.id
+          ),
+
+          loadProjectActivity(
+            project.id
+          ),
+        ]);
 
       } catch (
         err
@@ -1053,7 +1233,7 @@ function Dashboard() {
 
         setError(
           err?.message ||
-            "Unable to load project health."
+            "Unable to load project data."
         );
 
       }
@@ -1136,6 +1316,11 @@ function Dashboard() {
         );
 
 
+        const editedProjectId =
+          editingProject?.id ??
+          null;
+
+
         if (
           editingProject
         ) {
@@ -1168,6 +1353,19 @@ function Dashboard() {
 
 
         await loadProjects();
+
+
+        if (
+          editedProjectId &&
+          selectedProject?.id ===
+            editedProjectId
+        ) {
+
+          await loadProjectActivity(
+            editedProjectId
+          );
+
+        }
 
       } catch (
         err
@@ -1329,6 +1527,7 @@ function Dashboard() {
         priority: "MEDIUM",
         dueDate: "",
         assigneeId: "",
+        labels: "",
       });
 
 
@@ -1366,6 +1565,109 @@ function Dashboard() {
             value,
         })
       );
+
+    };
+
+
+  // =========================================================
+  // SEQUENCE 13B - LABEL HELPERS
+  // =========================================================
+
+  const parseLabels =
+    (
+      labelsValue
+    ) => {
+
+      if (
+        !labelsValue
+      ) {
+
+        return [];
+
+      }
+
+
+      const uniqueLabels =
+        new Map();
+
+
+      String(
+        labelsValue
+      )
+        .split(
+          ","
+        )
+        .map(
+          (
+            label
+          ) =>
+            label.trim()
+        )
+        .filter(
+          Boolean
+        )
+        .forEach(
+          (
+            label
+          ) => {
+
+            const key =
+              label.toLocaleLowerCase();
+
+
+            if (
+              !uniqueLabels.has(
+                key
+              )
+            ) {
+
+              uniqueLabels.set(
+                key,
+                label
+              );
+
+            }
+
+          }
+        );
+
+
+      return Array.from(
+        uniqueLabels.values()
+      );
+
+    };
+
+
+  const formatLabelsForInput =
+    (
+      labels
+    ) => {
+
+      if (
+        !Array.isArray(
+          labels
+        )
+      ) {
+
+        return "";
+
+      }
+
+
+      return labels
+        .filter(
+          (
+            label
+          ) =>
+            typeof label ===
+              "string" &&
+            label.trim() !==
+              ""
+        )
+        .join(
+          ", "
+        );
 
     };
 
@@ -1417,6 +1719,11 @@ function Dashboard() {
                   taskForm.assigneeId
                 )
               : null,
+
+          labels:
+            parseLabels(
+              taskForm.labels
+            ),
         };
 
 
@@ -1521,6 +1828,11 @@ function Dashboard() {
                 task.assigneeId
               )
             : "",
+
+        labels:
+          formatLabelsForInput(
+            task.labels
+          ),
       });
 
 
@@ -1662,6 +1974,29 @@ function Dashboard() {
       assigneeId:
         task.assigneeId ??
         null,
+
+      /*
+       * Sequence 13B
+       *
+       * Quick status updates must preserve the task's labels.
+       * The backend treats the labels collection on update as
+       * the task's complete replacement label set.
+       */
+      labels:
+        Array.isArray(
+          task.labels
+        )
+          ? task.labels
+              .filter(
+                (
+                  label
+                ) =>
+                  typeof label ===
+                    "string" &&
+                  label.trim() !==
+                    ""
+              )
+          : [],
 
       ...overrides,
     });
@@ -1912,6 +2247,646 @@ function Dashboard() {
       }
 
     };
+
+
+  // =========================================================
+  // SEQUENCE 14B - TASK COMMENT HELPERS
+  // =========================================================
+
+  const resetCommentState =
+    () => {
+
+      setCommentsTask(
+        null
+      );
+
+      setTaskComments(
+        []
+      );
+
+      setCommentsLoading(
+        false
+      );
+
+      setCommentSaving(
+        false
+      );
+
+      setCommentText(
+        ""
+      );
+
+      setEditingCommentId(
+        null
+      );
+
+      setEditingCommentText(
+        ""
+      );
+
+    };
+
+
+  const formatCommentDate =
+    (
+      dateValue
+    ) => {
+
+      if (
+        !dateValue
+      ) {
+
+        return "";
+
+      }
+
+
+      const date =
+        new Date(
+          dateValue
+        );
+
+
+      if (
+        Number.isNaN(
+          date.getTime()
+        )
+      ) {
+
+        return dateValue;
+
+      }
+
+
+      return date.toLocaleString();
+
+    };
+
+
+  const loadTaskComments =
+    async (
+      task
+    ) => {
+
+      if (
+        !selectedProject ||
+        !task
+      ) {
+
+        return;
+
+      }
+
+
+      try {
+
+        setCommentsLoading(
+          true
+        );
+
+        setError(
+          ""
+        );
+
+
+        const response =
+          await getTaskComments(
+            selectedProject.id,
+            task.id
+          );
+
+
+        const safeComments =
+          Array.isArray(
+            response
+          )
+            ? response
+            : [];
+
+
+        setTaskComments(
+          safeComments
+        );
+
+        setCommentCounts(
+          (
+            previous
+          ) => ({
+            ...previous,
+            [task.id]:
+              safeComments.length,
+          })
+        );
+
+      } catch (
+        err
+      ) {
+
+        console.error(
+          "Unable to load task comments:",
+          err
+        );
+
+        setTaskComments(
+          []
+        );
+
+        setError(
+          err?.message ||
+            "Unable to load task comments."
+        );
+
+      } finally {
+
+        setCommentsLoading(
+          false
+        );
+
+      }
+
+    };
+
+
+  const handleToggleComments =
+    async (
+      task
+    ) => {
+
+      if (
+        commentsTask?.id ===
+        task.id
+      ) {
+
+        resetCommentState();
+        return;
+
+      }
+
+
+      setCommentsTask(
+        task
+      );
+
+      setTaskComments(
+        []
+      );
+
+      setCommentText(
+        ""
+      );
+
+      setEditingCommentId(
+        null
+      );
+
+      setEditingCommentText(
+        ""
+      );
+
+
+      await loadTaskComments(
+        task
+      );
+
+    };
+
+
+  const handleCreateComment =
+    async (
+      event
+    ) => {
+
+      event.preventDefault();
+
+
+      if (
+        !selectedProject ||
+        !commentsTask
+      ) {
+
+        return;
+
+      }
+
+
+      const normalizedText =
+        commentText.trim();
+
+
+      if (
+        !normalizedText
+      ) {
+
+        setError(
+          "Comment text is required."
+        );
+
+        return;
+
+      }
+
+
+      if (
+        normalizedText.length >
+        2000
+      ) {
+
+        setError(
+          "Comment text cannot exceed 2000 characters."
+        );
+
+        return;
+
+      }
+
+
+      try {
+
+        setCommentSaving(
+          true
+        );
+
+        setError(
+          ""
+        );
+
+        setSuccessMessage(
+          ""
+        );
+
+
+        await createTaskComment(
+          selectedProject.id,
+          commentsTask.id,
+          normalizedText
+        );
+
+
+        setCommentText(
+          ""
+        );
+
+        setSuccessMessage(
+          "Comment added successfully."
+        );
+
+
+        await loadTaskComments(
+          commentsTask
+        );
+
+      } catch (
+        err
+      ) {
+
+        console.error(
+          "Unable to create comment:",
+          err
+        );
+
+        setError(
+          err?.message ||
+            "Unable to add comment."
+        );
+
+      } finally {
+
+        setCommentSaving(
+          false
+        );
+
+      }
+
+    };
+
+
+  const handleStartEditComment =
+    (
+      comment
+    ) => {
+
+      setEditingCommentId(
+        comment.id
+      );
+
+      setEditingCommentText(
+        comment.commentText ||
+          ""
+      );
+
+    };
+
+
+  const handleCancelEditComment =
+    () => {
+
+      setEditingCommentId(
+        null
+      );
+
+      setEditingCommentText(
+        ""
+      );
+
+    };
+
+
+  const handleUpdateComment =
+    async (
+      commentId
+    ) => {
+
+      if (
+        !selectedProject ||
+        !commentsTask
+      ) {
+
+        return;
+
+      }
+
+
+      const normalizedText =
+        editingCommentText.trim();
+
+
+      if (
+        !normalizedText
+      ) {
+
+        setError(
+          "Comment text is required."
+        );
+
+        return;
+
+      }
+
+
+      if (
+        normalizedText.length >
+        2000
+      ) {
+
+        setError(
+          "Comment text cannot exceed 2000 characters."
+        );
+
+        return;
+
+      }
+
+
+      try {
+
+        setCommentSaving(
+          true
+        );
+
+        setError(
+          ""
+        );
+
+        setSuccessMessage(
+          ""
+        );
+
+
+        await updateTaskComment(
+          selectedProject.id,
+          commentsTask.id,
+          commentId,
+          normalizedText
+        );
+
+
+        handleCancelEditComment();
+
+        setSuccessMessage(
+          "Comment updated successfully."
+        );
+
+
+        await loadTaskComments(
+          commentsTask
+        );
+
+      } catch (
+        err
+      ) {
+
+        console.error(
+          "Unable to update comment:",
+          err
+        );
+
+        setError(
+          err?.message ||
+            "Unable to update comment."
+        );
+
+      } finally {
+
+        setCommentSaving(
+          false
+        );
+
+      }
+
+    };
+
+
+  const handleDeleteComment =
+    async (
+      comment
+    ) => {
+
+      if (
+        !selectedProject ||
+        !commentsTask ||
+        !comment
+      ) {
+
+        return;
+
+      }
+
+
+      const confirmed =
+        window.confirm(
+          "Delete this comment?"
+        );
+
+
+      if (
+        !confirmed
+      ) {
+
+        return;
+
+      }
+
+
+      try {
+
+        setCommentSaving(
+          true
+        );
+
+        setError(
+          ""
+        );
+
+        setSuccessMessage(
+          ""
+        );
+
+
+        await deleteTaskComment(
+          selectedProject.id,
+          commentsTask.id,
+          comment.id
+        );
+
+
+        setSuccessMessage(
+          "Comment deleted successfully."
+        );
+
+
+        await loadTaskComments(
+          commentsTask
+        );
+
+      } catch (
+        err
+      ) {
+
+        console.error(
+          "Unable to delete comment:",
+          err
+        );
+
+        setError(
+          err?.message ||
+            "Unable to delete comment."
+        );
+
+      } finally {
+
+        setCommentSaving(
+          false
+        );
+
+      }
+
+    };
+
+
+  // =========================================================
+  // SEQUENCE 14B - LOAD COMMENT COUNTS
+  // =========================================================
+
+  useEffect(
+    () => {
+
+      if (
+        !selectedProject ||
+        tasks.length === 0
+      ) {
+
+        setCommentCounts(
+          {}
+        );
+
+        return;
+
+      }
+
+
+      let active =
+        true;
+
+
+      Promise.all(
+        tasks.map(
+          async (
+            task
+          ) => {
+
+            try {
+
+              const count =
+                await getTaskCommentCount(
+                  selectedProject.id,
+                  task.id
+                );
+
+
+              return [
+                task.id,
+                Number(
+                  count ?? 0
+                ),
+              ];
+
+            } catch (
+              err
+            ) {
+
+              console.error(
+                `Unable to load comment count for task ${task.id}:`,
+                err
+              );
+
+
+              return [
+                task.id,
+                0,
+              ];
+
+            }
+
+          }
+        )
+      )
+        .then(
+          (
+            entries
+          ) => {
+
+            if (
+              !active
+            ) {
+
+              return;
+
+            }
+
+
+            setCommentCounts(
+              Object.fromEntries(
+                entries
+              )
+            );
+
+          }
+        );
+
+
+      return () => {
+
+        active =
+          false;
+
+      };
+
+    },
+    [
+      selectedProject,
+      tasks,
+    ]
+  );
 
 
   // =========================================================
@@ -2780,6 +3755,7 @@ function Dashboard() {
                             priority: "MEDIUM",
                             dueDate: "",
                             assigneeId: "",
+                            labels: "",
                           });
 
 
@@ -3031,6 +4007,32 @@ function Dashboard() {
                             placeholder="Describe the task"
                             rows="4"
                           />
+
+                        </label>
+
+
+                        <label className="task-label-field">
+                          Labels
+
+                          <input
+                            type="text"
+                            name="labels"
+                            value={
+                              taskForm.labels
+                            }
+                            onChange={
+                              handleTaskInputChange
+                            }
+                            placeholder="Frontend, Backend, Bug, Urgent"
+                            aria-describedby="task-label-help"
+                          />
+
+                          <span
+                            id="task-label-help"
+                            className="muted-text"
+                          >
+                            Separate multiple labels with commas.
+                          </span>
 
                         </label>
 
@@ -3453,6 +4455,124 @@ function Dashboard() {
                   </section>
 
 
+                  {/* ========================================
+                      SEQUENCE 15A - PROJECT ACTIVITY
+                  ======================================== */}
+
+                  <section className="project-activity-panel">
+
+                    <div className="project-activity-header">
+
+                      <div>
+
+                        <span className="section-kicker">
+                          ACTIVITY
+                        </span>
+
+                        <h4>
+                          Recent Project Activity
+                        </h4>
+
+                      </div>
+
+                      <span className="count-badge">
+                        {projectActivity.length}
+                      </span>
+
+                    </div>
+
+
+                    {activityLoading ? (
+
+                      <div className="empty-state compact">
+                        Loading activity...
+                      </div>
+
+                    ) : projectActivity.length ===
+                      0 ? (
+
+                      <div className="empty-state compact">
+                        No project activity yet.
+                      </div>
+
+                    ) : (
+
+                      <div className="project-activity-list">
+
+                        {projectActivity
+                          .slice(
+                            0,
+                            10
+                          )
+                          .map(
+                            (
+                              activity
+                            ) => (
+
+                              <article
+                                className="project-activity-item"
+                                key={
+                                  activity.id
+                                }
+                              >
+
+                                <div className="project-activity-marker">
+                                  •
+                                </div>
+
+                                <div className="project-activity-content">
+
+                                  <strong>
+                                    {activity.description ||
+                                      formatStatus(
+                                        activity.activityType
+                                      )}
+                                  </strong>
+
+                                  {activity.fieldName && (
+
+                                    <span className="project-activity-change">
+                                      {activity.oldValue ??
+                                        "None"}
+                                      {" → "}
+                                      {activity.newValue ??
+                                        "None"}
+                                    </span>
+
+                                  )}
+
+                                  <div className="project-activity-meta">
+
+                                    <span>
+                                      {activity.userName ||
+                                        activity.userEmail ||
+                                        "User"}
+                                    </span>
+
+                                    <time>
+                                      {activity.createdAt
+                                        ? new Date(
+                                            activity.createdAt
+                                          ).toLocaleString()
+                                        : ""}
+                                    </time>
+
+                                  </div>
+
+                                </div>
+
+                              </article>
+
+                            )
+                          )}
+
+                      </div>
+
+                    )}
+
+                  </section>
+
+
                   <div className="task-list-header">
 
                     <div>
@@ -3641,6 +4761,37 @@ function Dashboard() {
                               </div>
 
 
+                              {Array.isArray(
+                                task.labels
+                              ) &&
+                                task.labels.length >
+                                  0 && (
+
+                                <div
+                                  className="task-label-list"
+                                  aria-label="Task labels"
+                                >
+                                  {task.labels.map(
+                                    (
+                                      label
+                                    ) => (
+
+                                      <span
+                                        key={
+                                          `${task.id}-${label}`
+                                        }
+                                        className="task-label-chip"
+                                      >
+                                        {label}
+                                      </span>
+
+                                    )
+                                  )}
+                                </div>
+
+                              )}
+
+
                               <div className="task-quick-actions">
 
                                 <div className="quick-status-control">
@@ -3783,6 +4934,31 @@ function Dashboard() {
 
                                   <button
                                     type="button"
+                                    className={`comment-button ${
+                                      commentsTask?.id ===
+                                      task.id
+                                        ? "comment-button-active"
+                                        : ""
+                                    }`}
+                                    onClick={
+                                      () =>
+                                        handleToggleComments(
+                                          task
+                                        )
+                                    }
+                                  >
+                                    Comments
+
+                                    <span className="comment-count-badge">
+                                      {commentCounts[
+                                        task.id
+                                      ] ?? 0}
+                                    </span>
+                                  </button>
+
+
+                                  <button
+                                    type="button"
                                     className="secondary-button small-button"
                                     onClick={
                                       () =>
@@ -3811,6 +4987,330 @@ function Dashboard() {
                                 </div>
 
                               </div>
+
+
+                              {commentsTask?.id ===
+                                task.id && (
+
+                                <section className="task-comments-panel">
+
+                                  <div className="comments-panel-header">
+
+                                    <div>
+
+                                      <span className="section-kicker">
+                                        COMMENTS
+                                      </span>
+
+                                      <h5>
+                                        Task Discussion
+                                      </h5>
+
+                                      <p>
+                                        {taskComments.length}{" "}
+                                        comment
+                                        {taskComments.length ===
+                                        1
+                                          ? ""
+                                          : "s"}
+                                      </p>
+
+                                    </div>
+
+
+                                    <button
+                                      type="button"
+                                      className="comments-close-button"
+                                      aria-label="Close comments"
+                                      onClick={
+                                        resetCommentState
+                                      }
+                                    >
+                                      ×
+                                    </button>
+
+                                  </div>
+
+
+                                  <form
+                                    className="comment-form"
+                                    onSubmit={
+                                      handleCreateComment
+                                    }
+                                  >
+
+                                    <label
+                                      htmlFor={`comment-${task.id}`}
+                                    >
+                                      Add Comment
+                                    </label>
+
+
+                                    <textarea
+                                      id={`comment-${task.id}`}
+                                      value={
+                                        commentText
+                                      }
+                                      onChange={
+                                        (
+                                          event
+                                        ) =>
+                                          setCommentText(
+                                            event.target.value
+                                          )
+                                      }
+                                      rows="3"
+                                      maxLength="2000"
+                                      placeholder="Write a comment..."
+                                      disabled={
+                                        commentSaving
+                                      }
+                                    />
+
+
+                                    <div className="comment-form-footer">
+
+                                      <span
+                                        className={`comment-character-count ${
+                                          commentText.length >
+                                          1900
+                                            ? "comment-character-count-warning"
+                                            : ""
+                                        }`}
+                                      >
+                                        {commentText.length} / 2000
+                                      </span>
+
+
+                                      <button
+                                        type="submit"
+                                        className="comment-save-button"
+                                        disabled={
+                                          commentSaving ||
+                                          !commentText.trim()
+                                        }
+                                      >
+                                        {commentSaving
+                                          ? "Saving..."
+                                          : "Add Comment"}
+                                      </button>
+
+                                    </div>
+
+                                  </form>
+
+
+                                  {commentsLoading ? (
+
+                                    <div className="comments-loading">
+                                      Loading comments...
+                                    </div>
+
+                                  ) : taskComments.length ===
+                                    0 ? (
+
+                                    <div className="comments-empty">
+                                      No comments yet. Add the first one.
+                                    </div>
+
+                                  ) : (
+
+                                    <div className="comments-list">
+
+                                      {taskComments.map(
+                                        (
+                                          comment
+                                        ) => (
+
+                                          <article
+                                            key={
+                                              comment.id
+                                            }
+                                            className="comment-card"
+                                          >
+
+                                            <div className="comment-card-header">
+
+                                              <div className="comment-author">
+
+                                                <strong>
+                                                  {comment.authorName ||
+                                                    comment.authorEmail ||
+                                                    "User"}
+                                                </strong>
+
+                                                {comment.authorEmail && (
+
+                                                  <span>
+                                                    {comment.authorEmail}
+                                                  </span>
+
+                                                )}
+
+                                              </div>
+
+
+                                              <div className="comment-meta">
+
+                                                <span>
+                                                  {formatCommentDate(
+                                                    comment.createdAt
+                                                  )}
+                                                </span>
+
+                                                {comment.updatedAt && (
+
+                                                  <span className="comment-edited-badge">
+                                                    Edited
+                                                  </span>
+
+                                                )}
+
+                                              </div>
+
+                                            </div>
+
+
+                                            {editingCommentId ===
+                                            comment.id ? (
+
+                                              <div className="comment-edit-form">
+
+                                                <textarea
+                                                  value={
+                                                    editingCommentText
+                                                  }
+                                                  onChange={
+                                                    (
+                                                      event
+                                                    ) =>
+                                                      setEditingCommentText(
+                                                        event.target.value
+                                                      )
+                                                  }
+                                                  rows="3"
+                                                  maxLength="2000"
+                                                  disabled={
+                                                    commentSaving
+                                                  }
+                                                />
+
+
+                                                <div className="comment-edit-footer">
+
+                                                  <span
+                                                    className={`comment-character-count ${
+                                                      editingCommentText.length >
+                                                      1900
+                                                        ? "comment-character-count-warning"
+                                                        : ""
+                                                    }`}
+                                                  >
+                                                    {editingCommentText.length} / 2000
+                                                  </span>
+
+
+                                                  <div className="comment-edit-actions">
+
+                                                    <button
+                                                      type="button"
+                                                      className="comment-save-button"
+                                                      disabled={
+                                                        commentSaving ||
+                                                        !editingCommentText.trim()
+                                                      }
+                                                      onClick={
+                                                        () =>
+                                                          handleUpdateComment(
+                                                            comment.id
+                                                          )
+                                                      }
+                                                    >
+                                                      Save
+                                                    </button>
+
+
+                                                    <button
+                                                      type="button"
+                                                      className="comment-cancel-button"
+                                                      disabled={
+                                                        commentSaving
+                                                      }
+                                                      onClick={
+                                                        handleCancelEditComment
+                                                      }
+                                                    >
+                                                      Cancel
+                                                    </button>
+
+                                                  </div>
+
+                                                </div>
+
+                                              </div>
+
+                                            ) : (
+
+                                              <>
+
+                                                <p className="comment-text">
+                                                  {comment.commentText}
+                                                </p>
+
+
+                                                <div className="comment-actions">
+
+                                                  <button
+                                                    type="button"
+                                                    className="comment-action-button"
+                                                    disabled={
+                                                      commentSaving
+                                                    }
+                                                    onClick={
+                                                      () =>
+                                                        handleStartEditComment(
+                                                          comment
+                                                        )
+                                                    }
+                                                  >
+                                                    Edit
+                                                  </button>
+
+
+                                                  <button
+                                                    type="button"
+                                                    className="comment-action-button comment-delete-button"
+                                                    disabled={
+                                                      commentSaving
+                                                    }
+                                                    onClick={
+                                                      () =>
+                                                        handleDeleteComment(
+                                                          comment
+                                                        )
+                                                    }
+                                                  >
+                                                    Delete
+                                                  </button>
+
+                                                </div>
+
+                                              </>
+
+                                            )}
+
+                                          </article>
+
+                                        )
+                                      )}
+
+                                    </div>
+
+                                  )}
+
+                                </section>
+
+                              )}
 
                             </article>
 
