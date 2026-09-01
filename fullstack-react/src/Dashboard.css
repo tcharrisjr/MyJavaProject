@@ -1059,15 +1059,43 @@
 
 .task-quick-actions {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-end;
+    gap: 14px;
     flex-wrap: wrap;
     margin-top: 14px;
 }
 
 .quick-status-control {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    cursor: default;
+}
+
+.quick-status-control label {
+    display: block;
+    margin: 0;
+    padding: 0;
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    white-space: nowrap;
+}
+
+.quick-status-control select {
+    min-width: 120px;
     min-height: 36px;
-    padding: 7px 10px;
+    padding: 7px 28px 7px 10px;
     border: 1px solid #cbd5e1;
     border-radius: 8px;
     background: #ffffff;
@@ -1077,7 +1105,7 @@
     cursor: pointer;
 }
 
-.quick-status-control:focus {
+.quick-status-control select:focus {
     outline: none;
     border-color: #2563eb;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
